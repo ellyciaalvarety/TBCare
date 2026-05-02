@@ -33,7 +33,7 @@ class TBCareTheme {
             color: Color(0xFF1A1A1A),
           ),
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData( // <-- Ubah dari CardTheme ke CardThemeData
           color: cardBg,
           elevation: 0,
           shape: RoundedRectangleBorder(
