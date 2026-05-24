@@ -119,17 +119,32 @@ class _JadwalScreenState extends State<JadwalScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text('Jadwal'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        titleSpacing: 20,
+        title: Row(
+          children: [
+            const Icon(
+              Icons.health_and_safety_rounded,
+              color: TBCareTheme.primary,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'TBCare',
+              style: TextStyle(
+                color: TBCareTheme.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
         bottom: TabBar(
           controller: _tabController,
-          labelColor: TBCareTheme.primary,
-          unselectedLabelColor: const Color(0xFF9E9E9E),
           indicatorColor: TBCareTheme.primary,
-          indicatorWeight: 2.5,
-          labelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+          labelColor: TBCareTheme.primary,
+          unselectedLabelColor: Colors.grey,
           tabs: const [
             Tab(text: 'Mendatang'),
             Tab(text: 'Selesai'),
@@ -151,7 +166,6 @@ class _JadwalScreenState extends State<JadwalScreen>
             emptyIcon: Icons.calendar_month_outlined,
             onReschedule: _showRescheduleSheet,
           ),
-
           // Tab Selesai
           _JadwalTabView(
             items: _selesai,

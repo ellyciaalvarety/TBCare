@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tbcare/app/routes.dart';
+import 'package:tbcare/app/theme.dart'; // Tambahkan import theme
 
 void main() {
   runApp(const TBCareApp());
@@ -41,35 +42,27 @@ class _ProfilScreenState extends State<ProfilScreen> {
   static const Color _logoutBg = Color(0xFFFDECEC);
   static const Color _logoutText = Color(0xFFD94F4F);
 
-  int _selectedNavIndex = 3; // Profil aktif
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bgColor,
+      appBar: _buildAppBar(), // Gunakan appBar bawaan Scaffold
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 28),
-                    _buildProfileHeader(),
-                    const SizedBox(height: 24),
-                    _buildInfoPribadiCard(),
-                    const SizedBox(height: 16),
-                    _buildInfoAkunCard(),
-                    const SizedBox(height: 20),
-                    _buildLogoutButton(),
-                    const SizedBox(height: 20),
-                  ],
-                ),
-              ),
-            ),
-          ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              const SizedBox(height: 28),
+              _buildProfileHeader(),
+              const SizedBox(height: 24),
+              _buildInfoPribadiCard(),
+              const SizedBox(height: 16),
+              _buildInfoAkunCard(),
+              const SizedBox(height: 20),
+              _buildLogoutButton(),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -77,21 +70,25 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   // ── App Bar ────────────────────────────────────────────────────────────────
 
-  Widget _buildAppBar() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      child: Row(
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      titleSpacing: 20,
+      title: Row(
         children: [
-          const Icon(Icons.shield_outlined, color: _primaryColor, size: 22),
+          const Icon(
+            Icons.health_and_safety_rounded,
+            color: TBCareTheme.primary,
+            size: 22,
+          ),
           const SizedBox(width: 8),
           const Text(
             'TBCare',
             style: TextStyle(
-              color: _primaryColor,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.3,
+              color: TBCareTheme.primary,
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
             ),
           ),
         ],
@@ -367,5 +364,4 @@ class _ProfilScreenState extends State<ProfilScreen> {
       ),
     );
   }
-
 }
