@@ -1,4 +1,10 @@
+// features/dokter/profil/edit_profil_screen.dart
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+class TBCareTheme {
+  static const Color primary = Color(0xFF1A9E8F);
+}
 
 class EditProfilScreen extends StatefulWidget {
   const EditProfilScreen({super.key});
@@ -9,317 +15,181 @@ class EditProfilScreen extends StatefulWidget {
 
 class _EditProfilScreenState extends State<EditProfilScreen> {
   final _formKey = GlobalKey<FormState>();
-
-  final _emailController = TextEditingController(text: 'johndoe@gmail.com');
-  final _phoneController = TextEditingController(text: '812345678');
-  final _newPasswordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  final _oldPasswordController = TextEditingController();
-
-  bool _obscureNewPassword = true;
-  bool _obscureConfirmPassword = true;
-  bool _obscureOldPassword = true;
-  bool _passwordMismatch = false;
-
-  static const Color _primaryColor = Color(0xFF2D8C7E);
-  static const Color _errorColor = Color(0xFFE53935);
-  static const Color _labelColor = Color(0xFF333333);
-  static const Color _fieldBackground = Color(0xFFF2F2F2);
-  static const Color _borderError = Color(0xFFE53935);
-
+  
+  // Controllers
+  final _nameController = TextEditingController(text: 'Dr. Budi Santoso');
+  final _birthDateController = TextEditingController(text: '12 Oktober 1990');
+  final _phoneController = TextEditingController(text: '0812345678');
+  final _emailController = TextEditingController(text: 'dr.budi@tbcare.com');
+  final _strController = TextEditingController(text: 'STR-2024-8842');
+  
+  String _selectedGender = 'Pria';
+  
   @override
   void dispose() {
-    _emailController.dispose();
+    _nameController.dispose();
+    _birthDateController.dispose();
     _phoneController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    _oldPasswordController.dispose();
+    _emailController.dispose();
+    _strController.dispose();
     super.dispose();
-  }
-
-  void _validatePasswords() {
-    setState(() {
-      _passwordMismatch =
-          _confirmPasswordController.text.isNotEmpty &&
-          _newPasswordController.text != _confirmPasswordController.text;
-    });
-  }
-
-  void _onSave() {
-    _validatePasswords();
-    if (_formKey.currentState!.validate() && !_passwordMismatch) {
-      // TODO: Implementasi logika simpan
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Profil berhasil disimpan')));
-    }
-  }
-
-  InputDecoration _fieldDecoration({
-    bool hasError = false,
-    Widget? suffixIcon,
-    Widget? prefixIcon,
-  }) {
-    return InputDecoration(
-      filled: true,
-      fillColor: _fieldBackground,
-      suffixIcon: suffixIcon,
-      prefixIcon: prefixIcon,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: hasError
-            ? const BorderSide(color: _borderError, width: 1.5)
-            : BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: hasError
-            ? const BorderSide(color: _borderError, width: 1.5)
-            : const BorderSide(color: _primaryColor, width: 1.5),
-      ),
-    );
-  }
-
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          color: _labelColor,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPasswordToggleIcon(bool obscure, VoidCallback onTap) {
-    return IconButton(
-      icon: Icon(
-        obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-        color: Colors.grey,
-      ),
-      onPressed: onTap,
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF5F7F7),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: const BackButton(color: _primaryColor),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: TBCareTheme.primary),
+          onPressed: () => context.pop(),
+        ),
         title: const Text(
-          'Edit Akun',
+          'Edit Profil',
           style: TextStyle(
             color: Colors.black87,
             fontWeight: FontWeight.w600,
             fontSize: 18,
           ),
         ),
+        centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Form(
-          key: _formKey,
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Avatar
               Center(
                 child: Stack(
                   children: [
-                    Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFFB0D4D0),
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.hardEdge,
-                      child: Image.network(
-                        'https://cdn-icons-png.flaticon.com/512/4202/4202843.png',
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.person,
-                          size: 50,
-                          color: Colors.white,
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundColor: const Color(0xFFB2D8D8),
+                      child: ClipOval(
+                        child: Image.network(
+                          'https://via.placeholder.com/100',
+                          width: 100,
+                          height: 100,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.person, size: 60, color: Colors.white),
                         ),
                       ),
                     ),
                     Positioned(
                       bottom: 0,
                       right: 0,
-                      child: GestureDetector(
-                        onTap: () {
-                          // TODO: Pilih foto profil
-                        },
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: const BoxDecoration(
-                            color: _primaryColor,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.edit,
-                            size: 16,
-                            color: Colors.white,
-                          ),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: TBCareTheme.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 16,
+                          color: Colors.white,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 28),
-
-              // Email
-              _buildLabel('Email'),
-              TextFormField(
+              const SizedBox(height: 24),
+              
+              // Form fields
+              _buildTextField(
+                controller: _nameController,
+                label: 'Nama Lengkap',
+                icon: Icons.person_outline,
+              ),
+              const SizedBox(height: 16),
+              
+              _buildTextField(
+                controller: _birthDateController,
+                label: 'Tanggal Lahir',
+                icon: Icons.cake_outlined,
+                readOnly: true,
+                onTap: () => _selectDate(context),
+              ),
+              const SizedBox(height: 16),
+              
+              _buildGenderSelector(),
+              const SizedBox(height: 16),
+              
+              _buildTextField(
+                controller: _phoneController,
+                label: 'Nomor HP',
+                icon: Icons.phone_android_outlined,
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+              
+              _buildTextField(
                 controller: _emailController,
+                label: 'Email',
+                icon: Icons.email_outlined,
                 keyboardType: TextInputType.emailAddress,
-                decoration: _fieldDecoration(),
-                style: const TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 16),
-
-              // No HP
-              _buildLabel('No HP'),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _fieldBackground,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      '+62',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      decoration: _fieldDecoration(),
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ),
-                ],
+              
+              _buildTextField(
+                controller: _strController,
+                label: 'STR Number',
+                icon: Icons.medical_information_outlined,
               ),
-              const SizedBox(height: 16),
-
-              // Password Baru
-              _buildLabel('Password Baru'),
-              TextFormField(
-                controller: _newPasswordController,
-                obscureText: _obscureNewPassword,
-                onChanged: (_) => _validatePasswords(),
-                decoration: _fieldDecoration(
-                  suffixIcon: _buildPasswordToggleIcon(
-                    _obscureNewPassword,
-                    () => setState(
-                      () => _obscureNewPassword = !_obscureNewPassword,
-                    ),
-                  ),
-                ),
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-
-              // Konfirmasi Password Baru
-              _buildLabel('Konfirmasi Password Baru'),
-              TextFormField(
-                controller: _confirmPasswordController,
-                obscureText: _obscureConfirmPassword,
-                onChanged: (_) => _validatePasswords(),
-                decoration: _fieldDecoration(
-                  hasError: _passwordMismatch,
-                  suffixIcon: _passwordMismatch
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Icon(Icons.error, color: _errorColor),
-                        )
-                      : _buildPasswordToggleIcon(
-                          _obscureConfirmPassword,
-                          () => setState(
-                            () => _obscureConfirmPassword =
-                                !_obscureConfirmPassword,
-                          ),
-                        ),
-                ),
-                style: const TextStyle(fontSize: 14),
-              ),
-              if (_passwordMismatch)
-                const Padding(
-                  padding: EdgeInsets.only(top: 6),
-                  child: Text(
-                    'Passwords do not match',
-                    style: TextStyle(color: _errorColor, fontSize: 12),
-                  ),
-                ),
-              const SizedBox(height: 16),
-
-              // Password Lama
-              _buildLabel('Password Lama'),
-              TextFormField(
-                controller: _oldPasswordController,
-                obscureText: _obscureOldPassword,
-                decoration: _fieldDecoration(
-                  suffixIcon: _buildPasswordToggleIcon(
-                    _obscureOldPassword,
-                    () => setState(
-                      () => _obscureOldPassword = !_obscureOldPassword,
-                    ),
-                  ),
-                ),
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 32),
-
-              // Tombol Simpan
+              const SizedBox(height: 24),
+              
+              // Save Button
               SizedBox(
                 width: double.infinity,
-                height: 52,
                 child: ElevatedButton(
-                  onPressed: _onSave,
+                  onPressed: _saveProfile,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryColor,
+                    backgroundColor: TBCareTheme.primary,
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                     elevation: 0,
                   ),
                   child: const Text(
-                    'Simpan',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    'Simpan Perubahan',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Cancel Button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => context.pop(),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: BorderSide(color: TBCareTheme.primary),
+                  ),
+                  child: Text(
+                    'Batal',
+                    style: TextStyle(
+                      color: TBCareTheme.primary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -329,5 +199,146 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
         ),
       ),
     );
+  }
+  
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool readOnly = false,
+    VoidCallback? onTap,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: controller,
+        readOnly: readOnly,
+        onTap: onTap,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.black54),
+          prefixIcon: Icon(icon, color: TBCareTheme.primary),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label tidak boleh kosong';
+          }
+          return null;
+        },
+      ),
+    );
+  }
+  
+  Widget _buildGenderSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.people_outline, color: TBCareTheme.primary),
+            const SizedBox(width: 12),
+            const Text(
+              'Jenis Kelamin',
+              style: TextStyle(color: Colors.black54),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Row(
+                children: [
+                  Radio(
+                    value: 'Pria',
+                    groupValue: _selectedGender,
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedGender = value!;
+                      });
+                    },
+                    activeColor: TBCareTheme.primary,
+                  ),
+                  const Text('Pria'),
+                  const SizedBox(width: 20),
+                  Radio(
+                    value: 'Wanita',
+                    groupValue: _selectedGender,
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedGender = value!;
+                      });
+                    },
+                    activeColor: TBCareTheme.primary,
+                  ),
+                  const Text('Wanita'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(1990, 10, 12),
+      firstDate: DateTime(1950),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        _birthDateController.text = '${picked.day} ${_getMonthName(picked.month)} ${picked.year}';
+      });
+    }
+  }
+  
+  String _getMonthName(int month) {
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    return months[month - 1];
+  }
+  
+  void _saveProfile() {
+    if (_formKey.currentState!.validate()) {
+      // Simpan perubahan
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profil berhasil diperbarui'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      context.pop();
+    }
   }
 }

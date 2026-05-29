@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tbcare/app/routes.dart';
 import 'package:tbcare/app/theme.dart';
+import 'package:tbcare/shared/widgets/tbcare_app_bar.dart';
 
-// Model sementara — nanti pindah ke data/models/pasien_model.dart
 class PasienListItem {
   final String id;
   final String pid;
   final String nama;
-  final double kepatuhan; // 0.0 – 1.0
+  final double kepatuhan;
   final String terakhirCek;
   final PasienRisiko risiko;
 
@@ -36,7 +36,6 @@ class _PatientsScreenState extends State<PatientsScreen> {
   String _query = '';
   PasienRisiko? _filterRisiko;
 
-  // TODO: ganti dengan data dari PatientsBloc
   final List<PasienListItem> _allPasien = const [
     PasienListItem(
       id: '1',
@@ -90,7 +89,6 @@ class _PatientsScreenState extends State<PatientsScreen> {
       return matchQuery && matchFilter;
     }).toList()
       ..sort((a, b) {
-        // Sort: risiko tinggi dulu
         const order = {
           PasienRisiko.risikoTinggi: 0,
           PasienRisiko.perlaPantauan: 1,
@@ -112,42 +110,14 @@ class _PatientsScreenState extends State<PatientsScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        titleSpacing: 20,
-        title: Row(
-          children: [
-            const Icon(Icons.health_and_safety_rounded,
-                color: TBCareTheme.primary, size: 22),
-            const SizedBox(width: 8),
-            const Text(
-              'TBCare',
-              style: TextStyle(
-                color: TBCareTheme.primary,
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded,
-                color: Color(0xFF1A1A1A)),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
+      appBar: const TBCareAppBar(),
       body: Column(
         children: [
-          // Search + filter bar
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Column(
               children: [
-                // Search field
                 TextField(
                   controller: _searchCtrl,
                   onChanged: (v) => setState(() => _query = v),
@@ -189,8 +159,6 @@ class _PatientsScreenState extends State<PatientsScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-
-                // Filter chips
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -199,8 +167,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                         label: 'Semua',
                         isSelected: _filterRisiko == null,
                         color: const Color(0xFF6B6B6B),
-                        onTap: () =>
-                            setState(() => _filterRisiko = null),
+                        onTap: () => setState(() => _filterRisiko = null),
                       ),
                       const SizedBox(width: 8),
                       _FilterChip(
@@ -223,8 +190,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                       const SizedBox(width: 8),
                       _FilterChip(
                         label: 'Stabil',
-                        isSelected:
-                            _filterRisiko == PasienRisiko.stabil,
+                        isSelected: _filterRisiko == PasienRisiko.stabil,
                         color: TBCareTheme.stabil,
                         onTap: () => setState(
                             () => _filterRisiko = PasienRisiko.stabil),
@@ -235,11 +201,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
               ],
             ),
           ),
-
-          // Summary bar
           _SummaryBar(pasienList: _allPasien),
-
-          // List pasien
           Expanded(
             child: filtered.isEmpty
                 ? const Center(
@@ -259,19 +221,17 @@ class _PatientsScreenState extends State<PatientsScreen> {
                   )
                 : RefreshIndicator(
                     color: TBCareTheme.primary,
-                    onRefresh: () async =>
-                        Future.delayed(const Duration(milliseconds: 800)),
+                    onRefresh: () async => Future.delayed(
+                        const Duration(milliseconds: 800)),
                     child: ListView.separated(
-                      padding:
-                          const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                       itemCount: filtered.length,
                       separatorBuilder: (_, __) =>
                           const SizedBox(height: 10),
                       itemBuilder: (_, i) => _PasienCard(
                         item: filtered[i],
-                        onTap: () => context.go(
-                          '/medis/patients/${filtered[i].id}',
-                        ),
+                        onTap: () => context
+                            .go('/medis/patients/${filtered[i].id}'),
                       ),
                     ),
                   ),
@@ -282,7 +242,6 @@ class _PatientsScreenState extends State<PatientsScreen> {
   }
 }
 
-// ── Filter chip ───────────────────────────────────────────────────
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool isSelected;
@@ -302,10 +261,10 @@ class _FilterChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.12) : Colors.transparent,
+          color:
+              isSelected ? color.withOpacity(0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? color : const Color(0xFFE0E0E0),
@@ -326,7 +285,6 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-// ── Summary bar ───────────────────────────────────────────────────
 class _SummaryBar extends StatelessWidget {
   final List<PasienListItem> pasienList;
   const _SummaryBar({required this.pasienList});
@@ -345,7 +303,8 @@ class _SummaryBar extends StatelessWidget {
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: const Color(0xFFF5F5F5),
           borderRadius: BorderRadius.circular(12),
@@ -354,13 +313,15 @@ class _SummaryBar extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _SummaryItem(
-                label: 'Total', value: '$total', color: const Color(0xFF6B6B6B)),
-            _Divider(),
+                label: 'Total',
+                value: '$total',
+                color: const Color(0xFF6B6B6B)),
+            _DividerLine(),
             _SummaryItem(
                 label: 'Risiko Tinggi',
                 value: '$tinggi',
                 color: TBCareTheme.risikoTinggi),
-            _Divider(),
+            _DividerLine(),
             _SummaryItem(
                 label: 'Perlu Pantauan',
                 value: '$pantau',
@@ -384,14 +345,11 @@ class _SummaryItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
+        Text(value,
+            style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: color)),
         const SizedBox(height: 2),
         Text(label,
             style: const TextStyle(
@@ -401,7 +359,7 @@ class _SummaryItem extends StatelessWidget {
   }
 }
 
-class _Divider extends StatelessWidget {
+class _DividerLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -409,7 +367,6 @@ class _Divider extends StatelessWidget {
   }
 }
 
-// ── Pasien card ───────────────────────────────────────────────────
 class _PasienCard extends StatelessWidget {
   final PasienListItem item;
   final VoidCallback onTap;
@@ -458,32 +415,22 @@ class _PasienCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                // Nama & ID
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        item.nama,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                      ),
+                      Text(item.nama,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A))),
                       const SizedBox(height: 2),
-                      Text(
-                        'ID: ${item.pid}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF9E9E9E),
-                        ),
-                      ),
+                      Text('ID: ${item.pid}',
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF9E9E9E))),
                     ],
                   ),
                 ),
-
-                // Status badge
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 4),
@@ -491,40 +438,31 @@ class _PasienCard extends StatelessWidget {
                     color: _risikoColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: _risikoColor.withOpacity(0.4), width: 0.8),
+                        color: _risikoColor.withOpacity(0.4),
+                        width: 0.8),
                   ),
-                  child: Text(
-                    _risikoLabel,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: _risikoColor,
-                    ),
-                  ),
+                  child: Text(_risikoLabel,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: _risikoColor)),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-
-            // Progress kepatuhan
             Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Kepatuhan Obat',
-                      style: TextStyle(
-                          fontSize: 12, color: Color(0xFF6B6B6B)),
-                    ),
-                    Text(
-                      '${(item.kepatuhan * 100).toInt()}%',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: _risikoColor,
-                      ),
-                    ),
+                    const Text('Kepatuhan Obat',
+                        style: TextStyle(
+                            fontSize: 12, color: Color(0xFF6B6B6B))),
+                    Text('${(item.kepatuhan * 100).toInt()}%',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: _risikoColor)),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -540,8 +478,6 @@ class _PasienCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-
-            // Footer
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -550,23 +486,18 @@ class _PasienCard extends StatelessWidget {
                     const Icon(Icons.calendar_today_rounded,
                         size: 11, color: Color(0xFFBBBBBB)),
                     const SizedBox(width: 4),
-                    Text(
-                      'Terakhir cek: ${item.terakhirCek}',
-                      style: const TextStyle(
-                          fontSize: 11, color: Color(0xFFAAAAAA)),
-                    ),
+                    Text('Terakhir cek: ${item.terakhirCek}',
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFFAAAAAA))),
                   ],
                 ),
-                Row(
-                  children: const [
-                    Text(
-                      'Detail',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: TBCareTheme.primary,
-                      ),
-                    ),
+                const Row(
+                  children: [
+                    Text('Detail',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: TBCareTheme.primary)),
                     SizedBox(width: 2),
                     Icon(Icons.arrow_forward_ios_rounded,
                         size: 10, color: TBCareTheme.primary),
