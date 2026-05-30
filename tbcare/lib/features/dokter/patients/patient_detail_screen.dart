@@ -31,8 +31,7 @@ class PatientDetailScreen extends StatelessWidget {
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child:
-              Container(height: 1, color: const Color(0xFFF0F0F0)),
+          child: Container(height: 1, color: const Color(0xFFF0F0F0)),
         ),
       ),
       body: ListView(
@@ -42,9 +41,13 @@ class PatientDetailScreen extends StatelessWidget {
           const SizedBox(height: 16),
           _KepatuhanSection(patientId: patientId),
           const SizedBox(height: 16),
-          _JadwalObatSection(onEdit: () {}),
+          _JadwalObatSection(
+            onEdit: () => context.go(
+              '/medis/patients/$patientId/edit-obat',
+            ),
+          ),
           const SizedBox(height: 16),
-          _KunjunganSection(),
+          _KunjunganSection(patientId: patientId),
         ],
       ),
     );
@@ -77,8 +80,8 @@ class _ProfilCard extends StatelessWidget {
                 height: 90,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(
-                      color: TBCareTheme.primary, width: 2.5),
+                  border:
+                      Border.all(color: TBCareTheme.primary, width: 2.5),
                 ),
                 child: ClipOval(
                   child: Container(
@@ -113,26 +116,31 @@ class _ProfilCard extends StatelessWidget {
                   color: Color(0xFF1A1A1A))),
           const SizedBox(height: 6),
           const Text('PID: #TBC-2023-0942',
-              style:
-                  TextStyle(fontSize: 13, color: Color(0xFF9E9E9E))),
+              style: TextStyle(fontSize: 13, color: Color(0xFF9E9E9E))),
           const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
-            Icon(Icons.phone_outlined,
-                size: 14, color: Color(0xFF6B6B6B)),
-            SizedBox(width: 6),
-            Text('+62 812-3456-7890',
-                style: TextStyle(
-                    fontSize: 13, color: Color(0xFF6B6B6B))),
-          ]),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.phone_outlined,
+                  size: 14, color: Color(0xFF6B6B6B)),
+              SizedBox(width: 6),
+              Text('+62 812-3456-7890',
+                  style:
+                      TextStyle(fontSize: 13, color: Color(0xFF6B6B6B))),
+            ],
+          ),
           const SizedBox(height: 6),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
-            Icon(Icons.calendar_today_outlined,
-                size: 14, color: Color(0xFF6B6B6B)),
-            SizedBox(width: 6),
-            Text('TTL: 14 Jan 1995',
-                style: TextStyle(
-                    fontSize: 13, color: Color(0xFF6B6B6B))),
-          ]),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.calendar_today_outlined,
+                  size: 14, color: Color(0xFF6B6B6B)),
+              SizedBox(width: 6),
+              Text('TTL: 14 Jan 1995',
+                  style:
+                      TextStyle(fontSize: 13, color: Color(0xFF6B6B6B))),
+            ],
+          ),
           const SizedBox(height: 16),
           const Divider(height: 1, color: Color(0xFFF0F0F0)),
           const SizedBox(height: 14),
@@ -140,8 +148,7 @@ class _ProfilCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _InfoChip(
-                  label: 'Fase: Intensif',
-                  color: TBCareTheme.primary),
+                  label: 'Fase: Intensif', color: TBCareTheme.primary),
               const SizedBox(width: 10),
               _InfoChip(
                   label: 'Hari: 42/180',
@@ -190,13 +197,18 @@ class _KepatuhanSection extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) {
-          bool isMatch = ctrl.text.trim() == 'RESET';
+          // ✅ Fix: case-insensitive, trim spasi
+          final isMatch =
+              ctrl.text.trim().toUpperCase() == 'RESET';
           return AlertDialog(
+            backgroundColor: const Color(0xFFF0F7F6),
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            title: const Text('Reset Progress Pasien',
-                style: TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w700)),
+                borderRadius: BorderRadius.circular(20)),
+            title: const Text(
+              'Reset Progress Pasien',
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,12 +216,13 @@ class _KepatuhanSection extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF3F3),
+                    color: const Color(0xFFFFF0F0),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                         color: const Color(0xFFFFCDD2)),
                   ),
                   child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(Icons.warning_amber_rounded,
                           color: Color(0xFFB71C1C), size: 18),
@@ -218,7 +231,7 @@ class _KepatuhanSection extends StatelessWidget {
                         child: Text(
                           'Tindakan ini akan menghapus seluruh data progres pasien dan tidak dapat dibatalkan.',
                           style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 13,
                               color: Color(0xFFB71C1C)),
                         ),
                       ),
@@ -226,9 +239,11 @@ class _KepatuhanSection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('Ketik RESET untuk konfirmasi:',
-                    style: TextStyle(
-                        fontSize: 13, color: Color(0xFF3D3D3D))),
+                const Text(
+                  'Ketik RESET untuk konfirmasi:',
+                  style: TextStyle(
+                      fontSize: 13, color: Color(0xFF3D3D3D)),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: ctrl,
@@ -238,7 +253,7 @@ class _KepatuhanSection extends StatelessWidget {
                     hintStyle: const TextStyle(
                         color: Color(0xFFBBBBBB)),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                        horizontal: 14, vertical: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
@@ -268,13 +283,16 @@ class _KepatuhanSection extends StatelessWidget {
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Batal',
-                    style: TextStyle(color: Color(0xFF6B6B6B))),
+                    style: TextStyle(
+                        color: Color(0xFF6B6B6B),
+                        fontWeight: FontWeight.w600)),
               ),
               TextButton(
                 onPressed: isMatch
                     ? () {
                         Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(
                           const SnackBar(
                             content: Text(
                                 'Progress pasien berhasil direset'),
@@ -283,12 +301,15 @@ class _KepatuhanSection extends StatelessWidget {
                         );
                       }
                     : null,
-                child: Text('Reset',
-                    style: TextStyle(
-                        color: isMatch
-                            ? const Color(0xFFB71C1C)
-                            : const Color(0xFFCCCCCC),
-                        fontWeight: FontWeight.w700)),
+                child: Text(
+                  'Reset',
+                  style: TextStyle(
+                    color: isMatch
+                        ? const Color(0xFFB71C1C)
+                        : const Color(0xFFCCCCCC),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           );
@@ -455,18 +476,16 @@ class _JadwalObatSection extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: const [
-                          Icon(Icons.access_time_rounded,
-                              size: 16, color: Color(0xFF3D3D3D)),
-                          SizedBox(width: 6),
-                          Text('18:00',
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1A1A1A))),
-                        ],
-                      ),
+                      Row(children: const [
+                        Icon(Icons.access_time_rounded,
+                            size: 16, color: Color(0xFF3D3D3D)),
+                        SizedBox(width: 6),
+                        Text('18:00',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1A1A1A))),
+                      ]),
                       const SizedBox(height: 14),
                       _ObatRowSimple(
                           nama: 'Rifampicin',
@@ -528,6 +547,9 @@ class _ObatRowSimple extends StatelessWidget {
 
 // ── Kunjungan mendatang ───────────────────────────────────────────
 class _KunjunganSection extends StatelessWidget {
+  final String patientId;
+  const _KunjunganSection({required this.patientId});
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -544,7 +566,9 @@ class _KunjunganSection extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF1A1A1A))),
               GestureDetector(
-                onTap: () {},
+                onTap: () => context.go(
+                  '/medis/patients/$patientId/ajukan-jadwal',
+                ),
                 child: Row(
                   children: [
                     Container(

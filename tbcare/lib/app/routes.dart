@@ -16,8 +16,11 @@ import 'package:tbcare/features/dokter/patients/patients_screen.dart';
 import 'package:tbcare/features/dokter/patients/patient_detail_screen.dart';
 import 'package:tbcare/features/dokter/patients/laporan_pasien_screen.dart';
 import 'package:tbcare/features/dokter/patients/detail_laporan_screen.dart';
+import 'package:tbcare/features/dokter/patients/edit_jadwal_obat_screen.dart';
 import 'package:tbcare/features/dokter/jadwal/jadwal_screen.dart'
     as dokter_jadwal;
+import 'package:tbcare/features/dokter/jadwal/ajukan_jadwal_screen.dart'
+    as dokter_ajukan;
 import 'package:tbcare/features/dokter/profil/profil_screen.dart'
     as dokter_profil;
 import 'package:tbcare/features/dokter/profil/edit_profil_screen.dart'
@@ -47,7 +50,7 @@ class Routes {
 }
 
 final router = GoRouter(
-  // ✅ BYPASS: langsung ke dokter, tidak perlu login
+  // ✅ BYPASS: langsung ke dokter
   initialLocation: Routes.patients,
 
   routes: [
@@ -66,7 +69,8 @@ final router = GoRouter(
 
     // Pasien shell
     ShellRoute(
-      builder: (context, state, child) => BottomNavPasien(child: child),
+      builder: (context, state, child) =>
+          BottomNavPasien(child: child),
       routes: [
         GoRoute(
           path: Routes.pasienHome,
@@ -82,7 +86,8 @@ final router = GoRouter(
           routes: [
             GoRoute(
               path: 'ajukan',
-              builder: (context, state) => const AjukanJadwalScreen(),
+              builder: (context, state) =>
+                  const AjukanJadwalScreen(),
             ),
           ],
         ),
@@ -99,7 +104,8 @@ final router = GoRouter(
 
     // Dokter / Perawat shell
     ShellRoute(
-      builder: (context, state, child) => BottomNavMedis(child: child),
+      builder: (context, state, child) =>
+          BottomNavMedis(child: child),
       routes: [
         GoRoute(
           path: Routes.patients,
@@ -112,6 +118,7 @@ final router = GoRouter(
                 return PatientDetailScreen(patientId: patientId);
               },
               routes: [
+                // Riwayat harian
                 GoRoute(
                   path: 'riwayat',
                   builder: (context, state) {
@@ -133,6 +140,25 @@ final router = GoRouter(
                       },
                     ),
                   ],
+                ),
+
+                // Edit jadwal obat
+                GoRoute(
+                  path: 'edit-obat',
+                  builder: (context, state) {
+                    final patientId = state.pathParameters['id']!;
+                    return EditJadwalObatScreen(patientId: patientId);
+                  },
+                ),
+
+                // Ajukan jadwal dari detail pasien
+                GoRoute(
+                  path: 'ajukan-jadwal',
+                  builder: (context, state) {
+                    final patientId = state.pathParameters['id']!;
+                    return dokter_ajukan.AjukanJadwalScreen(
+                        patientId: patientId);
+                  },
                 ),
               ],
             ),
