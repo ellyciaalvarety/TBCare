@@ -33,6 +33,7 @@ dependencies:
   # State management
   flutter_bloc: ^8.1.4
   equatable: ^2.0.5
+  sqflite: ^2.3.4
 
   # Navigation
   go_router: ^13.0.0
