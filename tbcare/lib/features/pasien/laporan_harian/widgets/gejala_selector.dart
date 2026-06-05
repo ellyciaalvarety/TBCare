@@ -1,3 +1,5 @@
+//features/pasien/laporan_harian/widgets/gejala_selector.dart
+
 import 'package:flutter/material.dart';
 import 'package:tbcare/app/theme.dart';
 
@@ -39,31 +41,25 @@ class _GejalaSelectorState extends State<GejalaSelector> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E8E8), width: 0.8),
-      ),
+    return SizedBox(
+      width: double.infinity,
       child: Wrap(
         spacing: 8,
-        runSpacing: 8,
-        children: _gejalaList.map((g) {
-          final label = g['label'] as String;
-          final icon = g['icon'] as IconData;
+        runSpacing: 10,
+        children: _gejalaList.map((item) {
+          final label = item['label'] as String;
+          final icon = item['icon'] as IconData;
           final isSelected = widget.selected.contains(label);
 
           return GestureDetector(
             onTap: () => _toggle(label),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 8),
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? TBCareTheme.primary.withOpacity(0.1)
-                    : const Color(0xFFF5F5F5),
+                    ? TBCareTheme.primary.withOpacity(0.06)
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: isSelected
@@ -77,7 +73,7 @@ class _GejalaSelectorState extends State<GejalaSelector> {
                 children: [
                   Icon(
                     icon,
-                    size: 14,
+                    size: 15,
                     color: isSelected
                         ? TBCareTheme.primary
                         : const Color(0xFF9E9E9E),
@@ -96,8 +92,8 @@ class _GejalaSelectorState extends State<GejalaSelector> {
                     ),
                   ),
                   if (isSelected) ...[
-                    const SizedBox(width: 4),
-                    Icon(
+                    const SizedBox(width: 6),
+                    const Icon(
                       Icons.check_rounded,
                       size: 13,
                       color: TBCareTheme.primary,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tbcare/app/theme.dart';
 
 void main() {
   runApp(const TBCareApp());
@@ -55,8 +56,6 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   static const Color _bgColor = Color(0xFFF5F7F7);
   static const Color _cardColor = Colors.white;
 
-  int _selectedNavIndex = 2; // Riwayat aktif
-
   final List<CatatanHarian> _catatanList = const [
     CatatanHarian(
       hari: 'SEN',
@@ -88,10 +87,10 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bgColor,
+      appBar: _buildAppBar(),
       body: SafeArea(
         child: Column(
           children: [
-            _buildAppBar(),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -117,21 +116,25 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
 
   // ── App Bar ────────────────────────────────────────────────────────────────
 
-  Widget _buildAppBar() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      child: Row(
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      titleSpacing: 20,
+      title: Row(
         children: [
-          const Icon(Icons.shield_outlined, color: _primaryColor, size: 22),
+          const Icon(
+            Icons.health_and_safety_rounded,
+            color: TBCareTheme.primary,
+            size: 22,
+          ),
           const SizedBox(width: 8),
-          Text(
+          const Text(
             'TBCare',
             style: TextStyle(
-              color: _primaryColor,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.3,
+              color: TBCareTheme.primary,
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
             ),
           ),
         ],
@@ -417,6 +420,4 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
       ),
     );
   }
-
-  // ── Bottom Nav Bar ─────────────────────────────────────────────────────────
 }

@@ -1,535 +1,632 @@
+//features/medis/patients/patient_detail_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tbcare/app/routes.dart';
 import 'package:tbcare/app/theme.dart';
 import 'package:tbcare/shared/widgets/kepatuhan_chart.dart';
+import 'package:tbcare/shared/database/database_helper.dart'; // Import DatabaseHelper Anda
 
-class PatientDetailScreen extends StatelessWidget {
+class PatientDetailScreen extends StatefulWidget {
   final String patientId;
   const PatientDetailScreen({super.key, required this.patientId});
 
   @override
+  State<PatientDetailScreen> createState() => _PatientDetailScreenState();
+}
+
+class _PatientDetailScreenState extends State<PatientDetailScreen> {
+  bool _isLoading = true;
+
+  // State Data Pasien
+  String _namaPasien = 'Memuat...';
+  String _risikoText = 'stabil';
+  Color _risikoColor = TBCareTheme.stabil;
+
+  // State Jadwal Obat & Konsultasi
+  List<Map<String, dynamic>> _obatList = [];
+  Map<String, dynamic>? _nextAppointment;
+
+  // State List Data untuk Grafik Garis Kepatuhan (30 hari terakhir)
+  List<double> _kepatuhanDataHistory = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAllPatientData();
+  }
+
+  Future<void> _loadAllPatientData() async {
+    setState(() => _isLoading = true);
+    try {
+      final db = await DatabaseHelper().database;
+
+      // 1. Ambil Profil Medis Pasien
+      final List<Map<String, dynamic>> patientQuery = await db.query(
+        'patients',
+        where: 'id = ?',
+        whereArgs: [widget.patientId],
+      );
+
+      if (patientQuery.isNotEmpty) {
+        final p = patientQuery.first;
+        _namaPasien = p['nama'] ?? 'Pasien Baru';
+
+        // Memetakan Teks Risiko & Warna dari SQLite
+        final String risikoRaw = p['risiko'] ?? 'PasienRisiko.stabil';
+        if (risikoRaw.contains('risikoTinggi')) {
+          _risikoText = 'Risiko Tinggi';
+          _risikoColor = TBCareTheme.risikoTinggi;
+        } else if (risikoRaw.contains('perlaPantauan')) {
+          _risikoText = 'Perlu Pantauan';
+          _risikoColor = TBCareTheme.perlaPantauan;
+        } else {
+          _risikoText = 'Stabil';
+          _risikoColor = TBCareTheme.stabil;
+        }
+      }
+
+      // 2. Ambil Riwayat Laporan Harian untuk diumpankan ke Grafik Garis Kepatuhan
+      // Kita mengambil data laporan dari `patient_reports` (maksimal 30 entri terakhir)
+      final List<Map<String, dynamic>> reportsQuery = await db.query(
+        'patient_reports',
+        where: 'patientId = ?',
+        whereArgs: [widget.patientId],
+        orderBy:
+            'id ASC', // Diurutkan maju agar grafik digambar dari kiri (lama) ke kanan (baru)
+        limit: 30,
+      );
+
+      if (reportsQuery.isNotEmpty) {
+        _kepatuhanDataHistory = reportsQuery.map((report) {
+          // Logika Penentuan Nilai: Jika tidak ada obat yang terlewat, beri nilai penuh (1.0)
+          // Jika ada indikasi terlewat, kita asumsikan nilainya turun (misal 0.5 atau 0.0)
+          final String jamObat = report['jam_obat']?.toString() ?? '';
+          if (jamObat.contains('Terlewat')) {
+            return 0.5;
+          }
+          return 1.0;
+        }).toList();
+      } else {
+        // Jika data di database kosong, gunakan fallback list kosong agar KepatuhanChart memakai data default internalnya
+        _kepatuhanDataHistory = [];
+      }
+
+      // 3. Ambil Daftar Jadwal Obat Pasien
+      _obatList = await db.query(
+        'schedules',
+        where: 'patientId = ?',
+        whereArgs: [widget.patientId],
+      );
+
+      // 4. Ambil Jadwal Konsultasi Terdekat yang Belum Selesai (isCompleted = 0)
+      final List<Map<String, dynamic>> appointmentQuery = await db.query(
+        'appointments',
+        where: 'patientId = ? AND isCompleted = 0',
+        whereArgs: [widget.patientId],
+        orderBy: 'id ASC',
+        limit: 1,
+      );
+
+      if (appointmentQuery.isNotEmpty) {
+        _nextAppointment = appointmentQuery.first;
+      } else {
+        _nextAppointment = null;
+      }
+    } catch (e) {
+      debugPrint("Gagal memuat detail data pasien: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // TODO: load dari PatientsBloc berdasarkan patientId
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text('Pasien'),
-        leading: BackButton(onPressed: () => context.go(Routes.patients)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert_rounded),
-            onPressed: () {},
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: TBCareTheme.primary,
+            size: 20,
           ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
-        children: [
-          // Profil card
-          _ProfilCard(),
-          const SizedBox(height: 16),
-
-          // Kepatuhan + chart
-          _KepatuhanSection(),
-          const SizedBox(height: 16),
-
-          // Jadwal obat harian
-          _JadwalObatSection(
-            onEdit: () {},
+          onPressed: () => context.go(Routes.patients),
+        ),
+        title: const Text(
+          'Pasien',
+          style: TextStyle(
+            color: TBCareTheme.primary,
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
           ),
-          const SizedBox(height: 16),
-
-          // Kunjungan mendatang
-          _KunjunganSection(),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Profil card ───────────────────────────────────────────────────
-class _ProfilCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E8E8), width: 0.8),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              // Avatar
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: TBCareTheme.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.person_rounded,
-                  size: 32,
-                  color: TBCareTheme.primary,
-                ),
-              ),
-              const SizedBox(width: 16),
-
-              // Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Jane Doe',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'PID: #TBC-2023-0942',
-                      style: TextStyle(
-                          fontSize: 12, color: Color(0xFF9E9E9E)),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      '+62 812-3456-7890',
-                      style: TextStyle(
-                          fontSize: 12, color: Color(0xFF6B6B6B)),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'TTL: 14 Jan 1995',
-                      style: TextStyle(
-                          fontSize: 12, color: Color(0xFF6B6B6B)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xFFF0F0F0)),
-          const SizedBox(height: 14),
-
-          // Fase & hari
-          Row(
-            children: [
-              _InfoChip(
-                label: 'Fase: Intensif',
-                color: TBCareTheme.primary,
-              ),
-              const SizedBox(width: 8),
-              _InfoChip(
-                label: 'Hari: 42/180',
-                color: const Color(0xFF6B6B6B),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  final String label;
-  final Color color;
-
-  const _InfoChip({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3), width: 0.8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: color,
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: const Color(0xFFF0F0F0)),
         ),
       ),
-    );
-  }
-}
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: TBCareTheme.primary),
+            )
+          : ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              children: [
+                // Card Profil Utama Pasien & Modul Grafik Kepatuhan
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE8F5E9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.person,
+                              color: TBCareTheme.primary,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _namaPasien,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'PID: ${widget.patientId}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade500,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _risikoColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: Text(
+                              _risikoText,
+                              style: TextStyle(
+                                color: _risikoColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Container(height: 1, color: Colors.grey.shade100),
+                      const SizedBox(height: 20),
 
-// ── Kepatuhan + chart ─────────────────────────────────────────────
-class _KepatuhanSection extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E8E8), width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header kepatuhan
-          Row(
-            children: [
-              // Ring kecil
-              SizedBox(
-                width: 72,
-                height: 72,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      value: 0.88,
-                      strokeWidth: 7,
-                      backgroundColor: const Color(0xFFEEEEEE),
-                      color: TBCareTheme.primary,
-                      strokeCap: StrokeCap.round,
-                    ),
-                    const Text(
-                      '88%',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Kepatuhan',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    GestureDetector(
-                      onTap: () {},
-                      child: const Text(
-                        'Lihat riwayat harian',
+                      // Bagian Kepatuhan Terintegrasi dengan Line Chart asli bawaan file Anda
+                      const Text(
+                        'Tingkat Kepatuhan',
                         style: TextStyle(
-                          fontSize: 12,
-                          color: TBCareTheme.primary,
-                          fontWeight: FontWeight.w500,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Persentase konsumsi obat teratur 30 hari terakhir.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A8A8A),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
 
-          const SizedBox(height: 20),
-
-          // Line chart
-          const KepatuhanChart(),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Jadwal obat harian ────────────────────────────────────────────
-class _JadwalObatSection extends StatelessWidget {
-  final VoidCallback onEdit;
-  const _JadwalObatSection({required this.onEdit});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E8E8), width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Jadwal Obat Harian',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1A1A1A),
-                ),
-              ),
-              GestureDetector(
-                onTap: onEdit,
-                child: const Text(
-                  '✎ Ubah',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: TBCareTheme.primary,
-                    fontWeight: FontWeight.w500,
+                      // Pemasangan KepatuhanChart asli dengan menyuplai List<double> history
+                      SizedBox(
+                        width: double.infinity,
+                        height:
+                            140, // Memberikan ruang tinggi yang cukup untuk render grafik garis kustom
+                        child: KepatuhanChart(
+                          data: _kepatuhanDataHistory.isNotEmpty
+                              ? _kepatuhanDataHistory
+                              : null,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
 
-          _JamObatGroup(
-            jam: '18:00',
-            obatList: const [
-              {'nama': 'Rifampicin', 'dosis': '1 Kapsul', 'aturan': 'Sesudah Makan'},
-              {'nama': 'Isoniazid', 'dosis': '1 Tablet', 'aturan': 'Sesudah Makan'},
-            ],
-          ),
-          const SizedBox(height: 12),
+                const SizedBox(height: 20),
 
-          _JamObatGroup(
-            jam: '12:00',
-            aturanJam: 'Sesudah Makan',
-            obatList: const [
-              {'nama': 'Rifampicin', 'dosis': '1 Kapsul', 'aturan': 'Sesudah Makan'},
-              {'nama': 'Isoniazid', 'dosis': '1 Tablet', 'aturan': 'Sesudah Makan'},
-            ],
-          ),
-          const SizedBox(height: 12),
+                // Card Navigasi Riwayat Laporan Harian
+                _buildMenuRowCard(
+                  icon: Icons.history_edu_rounded,
+                  title: 'Riwayat Laporan Pasien',
+                  subtitle: 'Lihat kepatuhan & gejala harian',
+                  onTap: () =>
+                      context.go('/medis/patients/${widget.patientId}/riwayat'),
+                ),
 
-          _JamObatGroup(
-            jam: '07:00',
-            aturanJam: 'Sebelum Makan',
-            obatList: const [
-              {'nama': 'Rifampicin', 'dosis': '1 Kapsul', 'aturan': 'Sebelum Makan'},
-              {'nama': 'Isoniazid', 'dosis': '1 Tablet', 'aturan': 'Sebelum Makan'},
-            ],
-          ),
-        ],
-      ),
+                const SizedBox(height: 20),
+
+                // Card Header & List Jadwal Minum Obat
+                _buildSectionHeader(
+                  title: 'Jadwal Obat',
+                  actionLabel: 'Edit',
+                  onActionTap: () => context.go(
+                    '/medis/patients/${widget.patientId}/edit-obat',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _buildJadwalObatSection(),
+
+                const SizedBox(height: 24),
+
+                // Card Header & Tampilan Konsultasi Selanjutnya
+                _buildSectionHeader(
+                  title: 'Konsultasi Selanjutnya',
+                  actionLabel: 'Ajukan',
+                  onActionTap: () => context.go(
+                    '/medis/patients/${widget.patientId}/ajukan-jadwal',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _buildKonsultasiSection(),
+              ],
+            ),
     );
   }
-}
 
-class _JamObatGroup extends StatelessWidget {
-  final String jam;
-  final String? aturanJam;
-  final List<Map<String, String>> obatList;
-
-  const _JamObatGroup({
-    required this.jam,
-    this.aturanJam,
-    required this.obatList,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+  Widget _buildMenuRowCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
           children: [
-            const Icon(Icons.access_time_rounded,
-                size: 13, color: Color(0xFF9E9E9E)),
-            const SizedBox(width: 5),
-            Text(
-              jam,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF3D3D3D),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: TBCareTheme.primary.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.assignment_outlined,
+                color: TBCareTheme.primary,
+                size: 20,
               ),
             ),
-            if (aturanJam != null) ...[
-              const SizedBox(width: 6),
-              Text(
-                '• $aturanJam',
-                style: const TextStyle(
-                    fontSize: 12, color: Color(0xFF9E9E9E)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF8A8A8A),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: Color(0xFFBBBBBB),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
-        ...obatList.map(
-          (o) => Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              children: [
-                const Icon(Icons.medication_rounded,
-                    size: 14, color: TBCareTheme.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    o['nama']!,
-                    style: const TextStyle(
-                        fontSize: 13, color: Color(0xFF3D3D3D)),
-                  ),
-                ),
-                Text(
-                  o['dosis']!,
-                  style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF9E9E9E)),
-                ),
-              ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required String title,
+    required String actionLabel,
+    required VoidCallback onActionTap,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1A1A),
+          ),
+        ),
+        GestureDetector(
+          onTap: onActionTap,
+          child: Text(
+            actionLabel,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: TBCareTheme.primary,
             ),
           ),
         ),
       ],
     );
   }
-}
 
-// ── Kunjungan mendatang ───────────────────────────────────────────
-class _KunjunganSection extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildJadwalObatSection() {
+    if (_obatList.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Center(
+          child: Text(
+            'Belum ada jadwal obat yang diatur.',
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final String jamMinum = _obatList.first['time'] ?? '18:00';
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E8E8), width: 0.8),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Kunjungan Mendatang',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1A1A1A),
-                ),
+              const Icon(
+                Icons.access_time_rounded,
+                size: 16,
+                color: Color(0xFF6B6B6B),
               ),
-              GestureDetector(
-                onTap: () {},
-                child: const Text(
-                  '+ Tambah Jadwal',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: TBCareTheme.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
+              const SizedBox(width: 6),
+              Text(
+                'Setiap jam $jamMinum',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF3D3D3D),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-
-          _KunjunganCard(
-            label: 'REVIEW LAB TEST',
-            tanggal: '20 Okt 2023 • 10:30',
-            ruangan: 'A 3.06',
-            color: const Color(0xFFE3F2FD),
-            labelColor: const Color(0xFF1565C0),
-            badgeText: 'Dari Domisili Sakit',
-          ),
-          const SizedBox(height: 10),
-          _KunjunganCard(
-            label: 'KONSULTASI',
-            tanggal: '18 Okt 2023 • 10:30',
-            ruangan: 'A 3.06',
-            color: TBCareTheme.primary.withOpacity(0.08),
-            labelColor: TBCareTheme.primaryDark,
-            badgeText: 'Dari Pasien',
-          ),
+          ..._obatList.map((obat) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10.0),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.medication_rounded,
+                    size: 16,
+                    color: TBCareTheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      obat['medicineName'] ?? '',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    "${obat['dosage']} • ${obat['instruction'] ?? 'Sebelum'}",
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF8A8A8A),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
         ],
       ),
     );
   }
+
+  Widget _buildKonsultasiSection() {
+    if (_nextAppointment == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Center(
+          child: Text(
+            'Tidak ada jadwal konsultasi terdekat.',
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final String agenda = _nextAppointment!['type'] ?? 'Konsultasi Medis';
+    final String waktu = _nextAppointment!['time'] ?? '';
+    final String ruangan = _nextAppointment!['room'] ?? '-';
+
+    return _AppointmentCard(
+      label: 'KONSULTASI MEDIS',
+      badgeText: 'Mendatang',
+      badgeBg: const Color(0xFFE8F5E9),
+      badgeTextColor: TBCareTheme.primary,
+      tanggal: waktu,
+      ruangan: 'Ruangan: $ruangan — $agenda',
+      textColor: TBCareTheme.primary,
+      bgColor: Colors.white,
+    );
+  }
 }
 
-class _KunjunganCard extends StatelessWidget {
+// ── Widget Card Janji Temu Komponen ─────────────────────────────────────
+class _AppointmentCard extends StatelessWidget {
   final String label;
+  final String badgeText;
+  final Color badgeBg;
+  final Color badgeTextColor;
   final String tanggal;
   final String ruangan;
-  final Color color;
-  final Color labelColor;
-  final String badgeText;
+  final Color textColor;
+  final Color bgColor;
 
-  const _KunjunganCard({
+  const _AppointmentCard({
     required this.label,
+    required this.badgeText,
+    required this.badgeBg,
+    required this.badgeTextColor,
     required this.tanggal,
     required this.ruangan,
-    required this.color,
-    required this.labelColor,
-    required this.badgeText,
+    required this.textColor,
+    required this.bgColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(12),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.01),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.calendar_month_rounded, size: 16),
-          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: badgeBg, shape: BoxShape.circle),
+            child: Icon(
+              Icons.calendar_today_rounded,
+              color: badgeTextColor,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       label,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: labelColor,
+                        color: textColor.withOpacity(0.8),
+                        letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(4),
+                        color: badgeBg,
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         badgeText,
                         style: TextStyle(
-                          fontSize: 9,
-                          color: labelColor,
-                          fontWeight: FontWeight.w500,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: badgeTextColor,
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   tanggal,
                   style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF3D3D3D)),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1A1A1A),
+                  ),
                 ),
+                const SizedBox(height: 2),
                 Text(
                   ruangan,
-                  style: const TextStyle(
-                      fontSize: 11, color: Color(0xFF9E9E9E)),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
             ),

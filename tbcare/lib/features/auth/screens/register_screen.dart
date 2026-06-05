@@ -1,7 +1,10 @@
+// features/auth/screens/register_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tbcare/app/routes.dart';
 import 'package:tbcare/app/theme.dart';
+import 'package:tbcare/shared/database/database_helper.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -34,41 +37,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _checkStrength() {
     final pass = _passCtrl.text;
     if (pass.isEmpty) {
-      setState(() { _passwordStrength = ''; _strengthColor = Colors.transparent; });
+      setState(() {
+        _passwordStrength = '';
+        _strengthColor = Colors.transparent;
+      });
       return;
     }
-    bool hasUpper = pass.contains(RegExp(r'[A-Z]'));
-    bool hasDigit = pass.contains(RegExp(r'[0-9]'));
-    bool hasSpecial = pass.contains(RegExp(r'[!@#\$%^&*]'));
-    int score = (pass.length >= 8 ? 1 : 0) +
-        (hasUpper ? 1 : 0) +
-        (hasDigit ? 1 : 0) +
-        (hasSpecial ? 1 : 0);
-
-    setState(() {
-      if (score <= 1) { _passwordStrength = 'WEAK'; _strengthColor = TBCareTheme.risikoTinggi; }
-      else if (score == 2) { _passwordStrength = 'MEDIUM'; _strengthColor = TBCareTheme.perlaPantauan; }
-      else { _passwordStrength = 'STRONG'; _strengthColor = TBCareTheme.stabil; }
-    });
-  }
-
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-
-    // TODO: ganti dengan AuthRepository.register()
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Akun berhasil dibuat, silakan login'),
-        backgroundColor: TBCareTheme.primary,
-      ),
-    );
-    context.go(Routes.login);
+    if (pass.length < 6) {
+      setState(() {
+        _passwordStrength = 'Sangat Lemah';
+        _strengthColor = Colors.red;
+      });
+    } else if (pass.length < 10 ||
+        !pass.contains(RegExp(r'[A-Z]')) ||
+        !pass.contains(RegExp(r'[0-9]'))) {
+      setState(() {
+        _passwordStrength = 'Sedang';
+        _strengthColor = Colors.orange;
+      });
+    } else {
+      setState(() {
+        _passwordStrength = 'Kuat';
+        _strengthColor = Colors.green;
+      });
+    }
   }
 
   @override
@@ -81,210 +73,212 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final db = await DatabaseHelper().database;
+      final emailClean = _emailCtrl.text.trim().toLowerCase();
+
+      // 1. Validasi apakah email sudah terdaftar
+      final List<Map<String, dynamic>> existingUser = await db.query(
+        'users',
+        where: 'email = ?',
+        whereArgs: [emailClean],
+      );
+
+      if (existingUser.isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Email sudah terdaftar! Gunakan email lain.'),
+            ),
+          );
+        }
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // 2. Insert ke tabel 'users' dan tangkap ID Auto-increment yang dihasilkan
+      final int newUserId = await db.insert('users', {
+        'name': _idCtrl.text.trim(),
+        'email': emailClean,
+        'password': _passCtrl.text,
+        'role': 'pasien',
+      });
+
+      // 3. Insert ke tabel 'patients' menggunakan 'userId' yang baru saja didapatkan
+      await db.insert('patients', {
+        'nama': _idCtrl.text.trim(),
+        'userId': newUserId, // Mengikat relasi ke user id secara tepat
+        'phone': _phoneCtrl.text.trim(),
+        'pid': 'P-${_idCtrl.text.trim().hashCode.toString().substring(0, 4)}',
+        'kepatuhan': 100.0,
+        'terakhir_cek': DateTime.now().toIso8601String().substring(0, 10),
+        'risiko': 'PasienRisiko.stabil',
+        'tanggal_lahir': '-',
+        'jenis_kelamin': '-',
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Akun Berhasil Dibuat! Silakan Login.')),
+        );
+        context.go(Routes.login);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Registrasi Gagal: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        leading: const BackButton(),
-        title: const Text('Buat Akun'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: TBCareTheme.primary.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.person_add_alt_1_outlined,
-                        size: 32,
-                        color: TBCareTheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Buat Akun',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Mulai perjalanan penyembuhan anda',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                    ),
-                  ],
+              const SizedBox(height: 40),
+              const Text(
+                'Daftar Akun Baru',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: TBCareTheme.primary,
                 ),
               ),
-
+              const SizedBox(height: 8),
+              Text(
+                'Silakan isi form di bawah ini untuk membuat akun pasien.',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+              ),
               const SizedBox(height: 32),
-
               Form(
                 key: _formKey,
                 child: Column(
                   children: [
-                    // No Kartu ID
                     TextFormField(
                       controller: _idCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'No Kartu ID',
-                        hintText: '0000-0000-0000',
+                        labelText: 'Nama Lengkap / No Kartu ID',
+                        prefixIcon: Icon(Icons.person_outline),
                       ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'No Kartu ID wajib diisi';
-                        return null;
-                      },
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Field ini wajib diisi'
+                          : null,
                     ),
-                    const SizedBox(height: 14),
-
-                    // Email
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _emailCtrl,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
                         labelText: 'Email',
-                        hintText: 'name@example.com',
+                        prefixIcon: Icon(Icons.email_outlined),
                       ),
                       validator: (v) {
                         if (v == null || v.isEmpty) return 'Email wajib diisi';
-                        if (!v.contains('@')) return 'Format email tidak valid';
+                        if (!v.contains('@')) return 'Format email salah';
                         return null;
                       },
                     ),
-                    const SizedBox(height: 14),
-
-                    // No HP
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _phoneCtrl,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
-                        labelText: 'No HP',
-                        hintText: '(555) 000-0000',
-                        prefixText: '+62 ',
+                        labelText: 'Nomor HP',
+                        prefixIcon: Icon(Icons.phone_outlined),
                       ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'No HP wajib diisi';
-                        return null;
-                      },
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Nomor HP wajib diisi'
+                          : null,
                     ),
-                    const SizedBox(height: 14),
-
-                    // Password
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _passCtrl,
                       obscureText: _obscurePass,
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        hintText: 'password123',
+                        prefixIcon: const Icon(Icons.lock_outline),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscurePass
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                            size: 20,
+                                ? Icons.visibility_off
+                                : Icons.visibility,
                           ),
                           onPressed: () =>
                               setState(() => _obscurePass = !_obscurePass),
                         ),
                       ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Password wajib diisi';
-                        if (v.length < 6) return 'Password minimal 6 karakter';
-                        return null;
-                      },
+                      validator: (v) => v == null || v.length < 6
+                          ? 'Password minimal 6 karakter'
+                          : null,
                     ),
-
-                    // Strength indicator
                     if (_passwordStrength.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: LinearProgressIndicator(
-                              value: _passwordStrength == 'WEAK'
-                                  ? 0.33
-                                  : _passwordStrength == 'MEDIUM'
-                                      ? 0.66
-                                      : 1.0,
-                              backgroundColor: Colors.grey.shade200,
-                              color: _strengthColor,
-                              minHeight: 3,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Kekuatan Password: $_passwordStrength',
+                          style: TextStyle(
+                            color: _strengthColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
                           ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'STRENGTH: $_passwordStrength',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: _strengthColor,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
-
-                    const SizedBox(height: 14),
-
-                    // Konfirmasi password
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _confirmCtrl,
                       obscureText: _obscureConfirm,
                       decoration: InputDecoration(
                         labelText: 'Konfirmasi Password',
+                        prefixIcon: const Icon(Icons.lock_clock_outlined),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscureConfirm
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                            size: 20,
+                                ? Icons.visibility_off
+                                : Icons.visibility,
                           ),
-                          onPressed: () =>
-                              setState(() => _obscureConfirm = !_obscureConfirm),
+                          onPressed: () => setState(
+                            () => _obscureConfirm = !_obscureConfirm,
+                          ),
                         ),
                       ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Konfirmasi password wajib diisi';
-                        if (v != _passCtrl.text) return 'Passwords do not match';
-                        return null;
-                      },
+                      validator: (v) =>
+                          v != _passCtrl.text ? 'Password tidak cocok' : null,
                     ),
-
-                    const SizedBox(height: 28),
-
-                    // Tombol register
+                    const SizedBox(height: 32),
                     SizedBox(
                       width: double.infinity,
-                      height: 52,
+                      height: 50,
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _register,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: TBCareTheme.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                         child: _isLoading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
                               )
-                            : Row(
+                            : const Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
+                                children: [
                                   Text('Buat Akun Pasien'),
                                   SizedBox(width: 8),
                                   Icon(Icons.arrow_forward, size: 18),
@@ -292,10 +286,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
-                    // Link ke login
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -322,7 +313,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 24),
             ],
           ),

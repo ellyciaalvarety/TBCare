@@ -1,12 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:tbcare/app/theme.dart';
+//features/pasien/home/widgets/obat_checklist.dart
 
-// Model sederhana — nanti pindah ke data/models/
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tbcare/app/theme.dart';
+import 'package:tbcare/shared/database/database_helper.dart'; // Import DatabaseHelper Anda
+
 class ObatItem {
   final String id;
   final String nama;
   final String dosis;
-  final String aturan; // 'Sebelum Makan' | 'Sesudah Makan'
+  final String aturan;
   final String jam;
   bool selesai;
 
@@ -21,35 +24,159 @@ class ObatItem {
 }
 
 class ObatChecklist extends StatefulWidget {
-  const ObatChecklist({super.key});
+  final VoidCallback
+  onRefreshHome; // Callback untuk memicu update persentase di KepatuhanCard
+
+  const ObatChecklist({super.key, required this.onRefreshHome});
 
   @override
   State<ObatChecklist> createState() => _ObatChecklistState();
 }
 
 class _ObatChecklistState extends State<ObatChecklist> {
-  // TODO: ganti dengan data dari HomeBloc / API
-  final List<ObatItem> _obatList = [
-    ObatItem(
-      id: '1',
-      nama: 'Isoniazid',
-      dosis: '1 Tablet',
-      aturan: 'Sebelum Makan',
-      jam: '08:00',
-    ),
-    ObatItem(
-      id: '2',
-      nama: 'Rifampicin',
-      dosis: '1 Kapsul',
-      aturan: 'Sebelum Makan',
-      jam: '08:00',
-      selesai: false,
-    ),
-  ];
+  List<ObatItem> _obatList = [];
+  bool _isLoading = true;
+  String? _patientId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHariIniObat();
+  }
+
+  Future<void> _loadHariIniObat() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _patientId = prefs.getString('patient_id');
+
+      final db = await DatabaseHelper().database;
+
+      // 1. Ambil daftar resep/jadwal obat master untuk pasien ini
+      final List<Map<String, dynamic>> masterObat = await db.query(
+        'patient_medications',
+        where: 'patientId = ?',
+        whereArgs: [_patientId],
+      );
+
+      // 2. Ambil log minum obat khusus HARI INI (Format: YYYY-MM-DD)
+      final String hariIniStr = DateTime.now().toIso8601String().split('T')[0];
+      final List<Map<String, dynamic>> logsHariIni = await db.query(
+        'patient_reports',
+        where: 'patientId = ? AND tanggal = ?',
+        whereArgs: [_patientId, hariIniStr],
+      );
+
+      final List<ObatItem> loadedObat = [];
+
+      if (masterObat.isNotEmpty) {
+        for (final row in masterObat) {
+          final String obatId = row['id'].toString();
+
+          // Periksa apakah obat ini sudah ditandai selesai/diminum hari ini
+          final bool isSelesai = logsHariIni.any(
+            (log) =>
+                log['medicationId'].toString() == obatId &&
+                !log['jam_obat'].toString().contains('Terlewat'),
+          );
+
+          loadedObat.add(
+            ObatItem(
+              id: obatId,
+              nama: row['nama'] ?? 'Nama Obat',
+              dosis: row['dosis'] ?? '1 Tablet',
+              aturan: row['aturan'] ?? 'Sesudah Makan',
+              jam: row['jam'] ?? '08:00',
+              selesai: isSelesai,
+            ),
+          );
+        }
+      } else {
+        // Fallback data bawaan jika resep di database lokal masih kosong
+        loadedObat.addAll([
+          ObatItem(
+            id: '1',
+            nama: 'Isoniazid',
+            dosis: '1 Tablet',
+            aturan: 'Sebelum Makan',
+            jam: '08:00',
+          ),
+          ObatItem(
+            id: '2',
+            nama: 'Rifampicin',
+            dosis: '1 Kapsul',
+            aturan: 'Sebelum Makan',
+            jam: '08:00',
+          ),
+        ]);
+      }
+
+      if (mounted) {
+        setState(() {
+          _obatList = loadedObat;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error load obat checklist: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _markAsDone(ObatItem obat) async {
+    if (_patientId == null) return;
+
+    try {
+      final db = await DatabaseHelper().database;
+      final String hariIniStr = DateTime.now().toIso8601String().split('T')[0];
+      final String jamSekarangStr = TimeOfDay.now().format(context);
+
+      // Simpan log ke tabel report harian sebagai bukti kepatuhan
+      await db.insert('patient_reports', {
+        'patientId': _patientId,
+        'medicationId': obat.id,
+        'tanggal': hariIniStr,
+        'jam_obat': 'Diminum jam $jamSekarangStr',
+        'status': 'Tepat Waktu',
+      });
+
+      setState(() {
+        obat.selesai = true;
+      });
+
+      // Picu pembaruan lingkaran persentase di home_screen secara realtime
+      widget.onRefreshHome();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Berhasil mencatat konsumsi ${obat.nama}'),
+            backgroundColor: TBCareTheme.primary,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Gagal menyimpan log minum obat: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Kelompokkan obat per jam
+    if (_isLoading) {
+      return const Padding(
+        padding: EdgeInsets.all(24.0),
+        child: Center(
+          child: CircularProgressIndicator(color: TBCareTheme.primary),
+        ),
+      );
+    }
+
+    if (_obatList.isEmpty) return const SizedBox.shrink();
+
+    // Mengelompokkan obat berdasarkan jam minum
     final Map<String, List<ObatItem>> grouped = {};
     for (final obat in _obatList) {
       grouped.putIfAbsent(obat.jam, () => []).add(obat);
@@ -67,7 +194,6 @@ class _ObatChecklistState extends State<ObatChecklist> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Jam header
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
@@ -89,15 +215,14 @@ class _ObatChecklistState extends State<ObatChecklist> {
                   ],
                 ),
               ),
-
-              // List obat
-              ...entry.value.map((obat) => _ObatTile(
-                    obat: obat,
-                    onToggle: (val) {
-                      setState(() => obat.selesai = val);
-                    },
-                  )),
-
+              ...entry.value.map(
+                (obat) => _ObatTile(
+                  obat: obat,
+                  onToggle: (val) {
+                    if (val) _markAsDone(obat);
+                  },
+                ),
+              ),
               const SizedBox(height: 8),
             ],
           );
@@ -107,7 +232,6 @@ class _ObatChecklistState extends State<ObatChecklist> {
   }
 }
 
-// ── Tile satu obat ────────────────────────────────────────────────
 class _ObatTile extends StatelessWidget {
   final ObatItem obat;
   final ValueChanged<bool> onToggle;
@@ -134,7 +258,6 @@ class _ObatTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Ikon obat
             Container(
               width: 32,
               height: 32,
@@ -151,8 +274,6 @@ class _ObatTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-
-            // Nama & dosis
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,8 +302,6 @@ class _ObatTile extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Tombol selesai / checkmark
             obat.selesai
                 ? const Icon(
                     Icons.check_circle_rounded,
@@ -193,7 +312,9 @@ class _ObatTile extends StatelessWidget {
                     onTap: () => onToggle(true),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: TBCareTheme.primary,
                         borderRadius: BorderRadius.circular(8),

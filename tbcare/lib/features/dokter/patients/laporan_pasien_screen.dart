@@ -1,328 +1,252 @@
+//features/medis/patients/laporan_pasien_screen.dart
+
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:tbcare/app/theme.dart';
+import 'package:tbcare/shared/database/database_helper.dart'; // Import DatabaseHelper Anda
 
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class LaporanPasienScreen extends StatefulWidget {
+  final String patientId;
+  const LaporanPasienScreen({super.key, required this.patientId});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Laporan Pasien',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2BAE8E)),
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-      ),
-      home: const LaporanPasienScreen(),
-    );
+  State<LaporanPasienScreen> createState() => _LaporanPasienScreenState();
+}
+
+class _LaporanPasienScreenState extends State<LaporanPasienScreen> {
+  List<Map<String, dynamic>> _riwayatLaporan = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRiwayatLaporan();
   }
-}
 
-// ─── Data Model ───────────────────────────────────────────────────────────────
+  // Fungsi untuk mengambil daftar riwayat laporan harian dari SQLite
+  Future<void> _loadRiwayatLaporan() async {
+    setState(() => _isLoading = true);
+    try {
+      final db = await DatabaseHelper().database;
 
-enum StatusObat { diminum, terlewat }
+      // Ambil riwayat laporan milik pasien ini, diurutkan dari tanggal terbaru (Descending)
+      final List<Map<String, dynamic>> results = await db.query(
+        'patient_reports',
+        where: 'patientId = ?',
+        whereArgs: [widget.patientId],
+        orderBy:
+            'id DESC', // Menggunakan ID auto-increment untuk urutan input terbaru
+      );
 
-class RiwayatHarian {
-  final int tanggal;
-  final String bulan;
-  final String namaHari;
-  final StatusObat status;
-  final int jumlahDosis; // hanya relevan jika status == terlewat
+      setState(() {
+        _riwayatLaporan = results;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      debugPrint("Gagal memuat riwayat laporan: $e");
+    }
+  }
 
-  const RiwayatHarian({
-    required this.tanggal,
-    required this.bulan,
-    required this.namaHari,
-    required this.status,
-    this.jumlahDosis = 0,
-  });
-}
+  // Helper untuk menentukan nama hari fungsional/lokal (Opsional)
+  String _determineHariLabel(String tanggalStr) {
+    try {
+      final hariIni = DateTime.now().day.toString();
+      if (tanggalStr == hariIni) return 'Hari Ini';
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
-
-class LaporanPasienScreen extends StatelessWidget {
-  const LaporanPasienScreen({super.key});
-
-  static const Color _primaryGreen = Color(0xFF2BAE8E);
-  static const Color _errorRed = Color(0xFFD94040);
-  static const Color _bgColor = Color(0xFFF0F7F5);
-  static const Color _cardBg = Colors.white;
-  static const Color _textDark = Color(0xFF1A1A2E);
-  static const Color _textGray = Color(0xFF6B7280);
-
-  static const List<RiwayatHarian> _riwayat = [
-    RiwayatHarian(
-      tanggal: 24,
-      bulan: 'MEI',
-      namaHari: 'Hari Ini',
-      status: StatusObat.diminum,
-    ),
-    RiwayatHarian(
-      tanggal: 23,
-      bulan: 'MEI',
-      namaHari: 'Kamis',
-      status: StatusObat.diminum,
-    ),
-    RiwayatHarian(
-      tanggal: 22,
-      bulan: 'MEI',
-      namaHari: 'Rabu',
-      status: StatusObat.terlewat,
-      jumlahDosis: 2,
-    ),
-    RiwayatHarian(
-      tanggal: 21,
-      bulan: 'MEI',
-      namaHari: 'Selasa',
-      status: StatusObat.terlewat,
-      jumlahDosis: 1,
-    ),
-    RiwayatHarian(
-      tanggal: 20,
-      bulan: 'MEI',
-      namaHari: 'Minggu',
-      status: StatusObat.diminum,
-    ),
-    RiwayatHarian(
-      tanggal: 19,
-      bulan: 'MEI',
-      namaHari: 'Sabtu',
-      status: StatusObat.diminum,
-    ),
-    RiwayatHarian(
-      tanggal: 18,
-      bulan: 'MEI',
-      namaHari: "Jum'at",
-      status: StatusObat.diminum,
-    ),
-  ];
+      // Jika Anda menyimpan data DateTime lengkap di database,
+      // Anda bisa memformatnya menjadi nama hari asli (Senin, Selasa, dll.)
+      return 'Laporan Harian';
+    } catch (_) {
+      return 'Laporan';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bgColor,
-      appBar: _buildAppBar(context),
-      body: _buildBody(),
-    );
-  }
-
-  // ── AppBar ──────────────────────────────────────────────────────────────────
-
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
-    return AppBar(
-      backgroundColor: _bgColor,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      leading: IconButton(
-        icon: const Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: _primaryGreen,
-          size: 20,
+      backgroundColor: const Color(0xFFF0F7F6),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF0F7F6),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: TBCareTheme.primary,
+            size: 20,
+          ),
+          onPressed: () => context.go('/medis/patients/${widget.patientId}'),
         ),
-        onPressed: () => Navigator.maybePop(context),
-      ),
-      title: const Text(
-        'Riwayat Harian',
-        style: TextStyle(
-          color: _primaryGreen,
-          fontWeight: FontWeight.w700,
-          fontSize: 20,
-        ),
-      ),
-      centerTitle: false,
-    );
-  }
-
-  // ── Body ────────────────────────────────────────────────────────────────────
-
-  Widget _buildBody() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      children: [
-        // Section header
-        const Padding(
-          padding: EdgeInsets.only(bottom: 12, top: 4),
-          child: Text(
-            'Bulan ini',
-            style: TextStyle(
-              color: _textDark,
-              fontWeight: FontWeight.w700,
-              fontSize: 17,
-            ),
+        title: const Text(
+          'Riwayat Laporan',
+          style: TextStyle(
+            color: TBCareTheme.primary,
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
           ),
         ),
-
-        // Cards
-        ...List.generate(_riwayat.length, (index) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _RiwayatCard(data: _riwayat[index]),
-          );
-        }),
-
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-}
-
-// ─── Card Widget ──────────────────────────────────────────────────────────────
-
-class _RiwayatCard extends StatelessWidget {
-  final RiwayatHarian data;
-
-  const _RiwayatCard({required this.data});
-
-  static const Color _primaryGreen = Color(0xFF2BAE8E);
-  static const Color _errorRed = Color(0xFFD94040);
-  static const Color _textDark = Color(0xFF1A1A2E);
-  static const Color _textGray = Color(0xFF6B7280);
-  static const Color _dateBg = Color(0xFFEEEEEE);
-
-  bool get _isDiminum => data.status == StatusObat.diminum;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () {},
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Row(
-            children: [
-              // Date badge
-              _buildDateBadge(),
-              const SizedBox(width: 14),
-              // Info
-              Expanded(child: _buildInfo()),
-              // Chevron
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFFCBCBCB),
-                size: 22,
+      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: TBCareTheme.primary),
+            )
+          : _riwayatLaporan.isEmpty
+          ? const Center(
+              child: Text(
+                'Belum ada riwayat laporan dari pasien ini.',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              itemCount: _riwayatLaporan.length,
+              itemBuilder: (context, index) {
+                final laporan = _riwayatLaporan[index];
+
+                // Ekstraksi data dari kolom SQLite
+                final String tgl = laporan['tanggal'] ?? '01';
+                final String bln = (laporan['bulan_tahun'] ?? 'MEI')
+                    .split(' ')[0]
+                    .toUpperCase();
+                final String labelHari = _determineHariLabel(tgl);
+
+                // Cek status kepatuhan dari catatan obat (misal jika ada obat terlewat)
+                // Anda bisa menyesuaikan logika penentuan teks status ini sesuai kebutuhan
+                final bool isOk = !laporan['jam_obat'].toString().contains(
+                  'Terlewat',
+                );
+                final String keterangan = isOk
+                    ? 'Obat Diminum'
+                    : 'Dosis Terlewat';
+
+                return _buildRiwayatCard(
+                  context: context,
+                  tanggal: tgl,
+                  bulan: bln,
+                  hari: labelHari,
+                  isOk: isOk,
+                  keterangan: keterangan,
+                );
+              },
+            ),
     );
   }
 
-  Widget _buildDateBadge() {
-    return Container(
-      width: 50,
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: _dateBg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            data.bulan,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: _textGray,
-              letterSpacing: 0.5,
-            ),
-          ),
-          Text(
-            '${data.tanggal}',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: _textDark,
-              height: 1.1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfo() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          data.namaHari,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: _textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Icon(
-              _isDiminum ? Icons.check_circle_rounded : Icons.cancel_rounded,
-              size: 16,
-              color: _isDiminum ? _primaryGreen : _errorRed,
-            ),
-            const SizedBox(width: 5),
-            Text(
-              _isDiminum
-                  ? 'Obat Diminum'
-                  : '${data.jumlahDosis} Dosis Terlewat',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: _isDiminum ? _primaryGreen : _errorRed,
-              ),
+  Widget _buildRiwayatCard({
+    required BuildContext context,
+    required String tanggal,
+    required String bulan,
+    required String hari,
+    required bool isOk,
+    required String keterangan,
+  }) {
+    return GestureDetector(
+      // Navigasi dinamis menuju halaman detail laporan berdasarkan tanggal riwayat yang diklik
+      onTap: () =>
+          context.go('/medis/patients/${widget.patientId}/riwayat/$tanggal'),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-      ],
-    );
-  }
-}
-
-// ─── Bottom Nav Item ──────────────────────────────────────────────────────────
-
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final Color activeColor;
-
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    required this.activeColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isActive ? activeColor : const Color(0xFFAAAAAA);
-
-    return GestureDetector(
-      onTap: () {},
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 26),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-              color: color,
+        child: Row(
+          children: [
+            // Indikator Tanggal Kotak Kiri
+            Container(
+              width: 50,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    tanggal,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
+                      height: 1.1,
+                    ),
+                  ),
+                  Text(
+                    bulan,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF9E9E9E),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 14),
+
+            // Informasi Status Tengah
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hari,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        isOk
+                            ? Icons.check_circle_rounded
+                            : Icons.cancel_rounded,
+                        size: 15,
+                        color: isOk
+                            ? TBCareTheme.primary
+                            : const Color(0xFFE53935),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        keterangan,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: isOk
+                              ? TBCareTheme.primary
+                              : const Color(0xFFE53935),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: Color(0xFFCCCCCC),
+            ),
+          ],
+        ),
       ),
     );
   }
