@@ -1,5 +1,6 @@
-//features/pasien/laporan_harian/laporan_screen.dart
+// features/pasien/laporan_harian/laporan_screen.dart
 
+import 'dart:convert'; // Wajib untuk fungsi jsonEncode
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,7 +9,7 @@ import 'package:tbcare/app/theme.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:tbcare/features/pasien/laporan_harian/widgets/gejala_selector.dart';
 import 'package:tbcare/features/pasien/laporan_harian/widgets/catatan_input.dart';
-import 'package:tbcare/shared/database/database_helper.dart'; // Sesuaikan path lokasi DatabaseHelper Anda
+import 'package:tbcare/shared/database/database_helper.dart';
 
 class LaporanScreen extends StatefulWidget {
   const LaporanScreen({super.key});
@@ -32,7 +33,7 @@ class _LaporanScreenState extends State<LaporanScreen> {
 
   bool _isLoading = false;
 
-  // Fungsi menyimpan data laporan harian ke SQLite
+  // Fungsi menyimpan data laporan harian ke tabel patient_reports di SQLite
   Future<void> _kirimLaporan() async {
     if (_moodIndex == -1) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -48,39 +49,107 @@ class _LaporanScreenState extends State<LaporanScreen> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String? patientId = prefs.getString('patient_id');
+      // Mengambil email dari sesi login SharedPreferences
+      final String? email = prefs.getString('email');
 
-      if (patientId == null) {
-        throw Exception('Sesi pasien tidak ditemukan. Silakan login kembali.');
+      if (email == null || email.trim().isEmpty) {
+        throw Exception('Sesi login tidak ditemukan. Silakan login kembali.');
       }
 
-      // Ambil tanggal hari ini dalam format lokal standar YYYY-MM-DD
-      final String tanggalHariIni = DateTime.now().toIso8601String().split('T')[0];
-
-      // Gabungkan daftar gejala menjadi satu String teks dengan pemisah koma
-      final String gejalaTeks = _gejalaSelected.join(', ');
-
       final db = await DatabaseHelper().database;
+      final cleanEmail = email.trim().toLowerCase();
 
-      // Gunakan operasi conflict algorithm REPLACE agar jika pasien mengirim ulang laporan pada hari yang sama, data lama diperbarui
-      await db.insert(
-        'daily_reports',
-        {
-          'patient_id': patientId,
-          'tanggal': tanggalHariIni,
-          'semua_obat_diminum': _semuaObatDiminum ? 1 : 0,
-          'gejala': gejalaTeks,
-          'catatan': _catatan,
-          'mood_index': _moodIndex,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      // 1. Cari data user berdasarkan email yang sedang aktif login
+      final List<Map<String, dynamic>> userCheck = await db.query(
+        'users',
+        where: 'LOWER(TRIM(email)) = ?',
+        whereArgs: [cleanEmail],
       );
+
+      if (userCheck.isEmpty) {
+        throw Exception('Data akun tidak terdaftar di database.');
+      }
+
+      final int userId = userCheck.first['id'];
+
+      // 2. Cari patientId asli dari relasi tabel patients
+      final List<Map<String, dynamic>> patientCheck = await db.query(
+        'patients',
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+
+      if (patientCheck.isEmpty) {
+        throw Exception(
+          'Profil data pasien Anda belum dikonfigurasi di database.',
+        );
+      }
+
+      // Ambil ID Pasien sesungguhnya sebagai Foreign Key untuk tabel patient_reports
+      final int originalPatientId = patientCheck.first['id'];
+
+      // 3. Persiapkan format data waktu sesuai kebutuhan kolom tabel Anda
+      final waktuSekarang = DateTime.now();
+
+      // format tanggal: "YYYY-MM-DD"
+      final String formatTanggal = waktuSekarang.toIso8601String().split(
+        'T',
+      )[0];
+
+      // format bulan_tahun: "Juni 2026"
+      final months = [
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember',
+      ];
+      final String formatBulanTahun =
+          '${months[waktuSekarang.month - 1]} ${waktuSekarang.year}';
+
+      // format jam_obat: "Obat jam 08:00" atau "Laporan jam 13:45"
+      final String formatJamObat =
+          'Laporan jam ${waktuSekarang.hour.toString().padLeft(2, '0')}:${waktuSekarang.minute.toString().padLeft(2, '0')}';
+
+      // 4. Konversi data list ke format JSON String (karena tipe data kolom di SQLite Anda berupa TEXT)
+      final String gejalaJson = jsonEncode(
+        _gejalaSelected,
+      ); // Hasil: '["Batuk","Demam"]'
+
+      final String obatJson = jsonEncode({
+        'semua_diminum': _semuaObatDiminum,
+        'waktu_input': waktuSekarang.toIso8601String(),
+      });
+
+      // Menggabungkan keluhan teks dengan status indeks perasaan/mood pasien
+      final String catatanFinal = _catatan.isEmpty
+          ? 'Kondisi Perasaan: $_moodIndex'
+          : '$_catatan (Mood: $_moodIndex)';
+
+      // 5. Simpan (INSERT/REPLACE) data ke tabel patient_reports
+      await db.insert('patient_reports', {
+        'patientId': originalPatientId, // INTEGER
+        'tanggal': formatTanggal, // TEXT
+        'bulan_tahun': formatBulanTahun, // TEXT
+        'jam_obat': formatJamObat, // TEXT
+        'obat_list': obatJson, // TEXT (JSON String)
+        'gejala_list': gejalaJson, // TEXT (JSON String)
+        'catatan': catatanFinal, // TEXT
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Laporan harian Anda berhasil disimpan!'),
             backgroundColor: TBCareTheme.primary,
+            behavior: SnackBarBehavior.floating,
           ),
         );
         // Kembali ke halaman beranda utama pasien
@@ -90,8 +159,11 @@ class _LaporanScreenState extends State<LaporanScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal menyimpan laporan harian: $e'),
+            content: Text(
+              'Gagal menyimpan laporan harian: ${e.toString().replaceAll('Exception: ', '')}',
+            ),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -111,8 +183,11 @@ class _LaporanScreenState extends State<LaporanScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: TBCareTheme.primary, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: TBCareTheme.primary,
+            size: 20,
+          ),
           onPressed: () => context.go(Routes.pasienHome),
         ),
         title: const Text(
@@ -139,14 +214,18 @@ class _LaporanScreenState extends State<LaporanScreen> {
                       const Text(
                         'Apakah semua obat hari ini sudah diminum?',
                         style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1A1A1A)),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF1A1A1A),
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         'Kejujuran Anda membantu pemulihan',
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
                       ),
                     ],
                   ),
@@ -202,10 +281,30 @@ class _LaporanScreenState extends State<LaporanScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildMoodItem(0, Icons.sentiment_very_dissatisfied_rounded, 'Buruk', Colors.red),
-                    _buildMoodItem(1, Icons.sentiment_neutral_rounded, 'Biasa', Colors.orange),
-                    _buildMoodItem(2, Icons.sentiment_satisfied_rounded, 'Baik', Colors.blue),
-                    _buildMoodItem(3, Icons.sentiment_very_satisfied_rounded, 'Sangat Baik', TBCareTheme.primary),
+                    _buildMoodItem(
+                      0,
+                      Icons.sentiment_very_dissatisfied_rounded,
+                      'Buruk',
+                      Colors.red,
+                    ),
+                    _buildMoodItem(
+                      1,
+                      Icons.sentiment_neutral_rounded,
+                      'Biasa',
+                      Colors.orange,
+                    ),
+                    _buildMoodItem(
+                      2,
+                      Icons.sentiment_satisfied_rounded,
+                      'Baik',
+                      Colors.blue,
+                    ),
+                    _buildMoodItem(
+                      3,
+                      Icons.sentiment_very_satisfied_rounded,
+                      'Sangat Baik',
+                      TBCareTheme.primary,
+                    ),
                   ],
                 ),
               ],
@@ -233,7 +332,12 @@ class _LaporanScreenState extends State<LaporanScreen> {
     );
   }
 
-  Widget _buildMoodItem(int index, IconData icon, String label, Color activeColor) {
+  Widget _buildMoodItem(
+    int index,
+    IconData icon,
+    String label,
+    Color activeColor,
+  ) {
     final isSelected = _moodIndex == index;
     return GestureDetector(
       onTap: () => setState(() => _moodIndex = index),
@@ -243,7 +347,9 @@ class _LaporanScreenState extends State<LaporanScreen> {
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isSelected ? activeColor.withOpacity(0.12) : const Color(0xFFF5F5F5),
+              color: isSelected
+                  ? activeColor.withOpacity(0.12)
+                  : const Color(0xFFF5F5F5),
               shape: BoxShape.circle,
               border: Border.all(
                 color: isSelected ? activeColor : Colors.transparent,
