@@ -23,15 +23,9 @@ class JadwalPasienItem {
   });
 
   factory JadwalPasienItem.fromMap(Map<String, dynamic> map) {
-    // Kita cetak log ke console untuk melihat isi asli data dari DB Anda
-    debugPrint("=== DATA DARI DATABASE ===");
-    debugPrint(
-      "ID: ${map['id']}, Time: ${map['time']}, Room/Status: ${map['room']}, IsCompleted: ${map['isCompleted']}",
-    );
-
     return JadwalPasienItem(
       id: map['id']?.toString() ?? '',
-      tanggalJam: map['time']?.toString() ?? '',
+      tanggalJam: map['time']?.toString() ?? '', 
       status: map['room']?.toString() ?? 'Menunggu Konfirmasi',
       tipeKonsul: map['type']?.toString() ?? 'Konsultasi Rutin TBC',
       isCompleted: map['isCompleted'] is int ? map['isCompleted'] : 0,
@@ -46,8 +40,7 @@ class JadwalScreen extends StatefulWidget {
   State<JadwalScreen> createState() => _JadwalScreenState();
 }
 
-class _JadwalScreenState extends State<JadwalScreen>
-    with SingleTickerProviderStateMixin {
+class _JadwalScreenState extends State<JadwalScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<JadwalPasienItem> _allJadwal = [];
   bool _isLoading = true;
@@ -60,57 +53,76 @@ class _JadwalScreenState extends State<JadwalScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadDataJadwal(silentReload: true);
+  }
+
+  @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadDataJadwal() async {
+  Future<void> _loadDataJadwal({bool silentReload = false}) async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
-
+    if (!silentReload) {
+      setState(() => _isLoading = true);
+    }
+    
     try {
-      final db = await DatabaseHelper().database;
+      final prefs = await SharedPreferences.getInstance();
+      final String? email = prefs.getString('email');
 
-      // BYPASS: Kita ambil SEMUA data dari tabel appointments tanpa filter patientId!
-      final List<Map<String, dynamic>> maps = await db.query(
-        'appointments',
-        orderBy: 'time DESC',
-      );
+      if (email != null && email.trim().isNotEmpty) {
+        final db = await DatabaseHelper().database;
+        final cleanEmail = email.trim().toLowerCase();
 
-      // Cetak ke log untuk melihat isi data aslinya di Run/Debug Console
-      debugPrint("===============================================");
-      debugPrint("TOTAL DATA DI TABEL APPOINTMENTS: ${maps.length} BARIS");
-      for (var row in maps) {
-        debugPrint(
-          "Isi Baris DB -> ID: ${row['id']}, patientId di DB: ${row['patientId']}, Nama: ${row['patientName']}, Jam: ${row['time']}",
+        final List<Map<String, dynamic>> userCheck = await db.query(
+          'users',
+          where: 'LOWER(TRIM(email)) = ?',
+          whereArgs: [cleanEmail],
         );
-      }
-      debugPrint("===============================================");
 
-      if (mounted) {
-        setState(() {
-          _allJadwal = maps
-              .map((item) => JadwalPasienItem.fromMap(item))
-              .toList();
-        });
+        if (userCheck.isNotEmpty) {
+          final int userId = userCheck.first['id'];
+
+          final List<Map<String, dynamic>> patientCheck = await db.query(
+            'patients',
+            where: 'userId = ?',
+            whereArgs: [userId],
+          );
+
+          if (patientCheck.isNotEmpty) {
+            final int patientId = patientCheck.first['id'];
+
+            final List<Map<String, dynamic>> maps = await db.query(
+              'appointments',
+              where: 'patientId = ?',
+              whereArgs: [patientId],
+              orderBy: 'time DESC',
+            );
+
+            if (mounted) {
+              setState(() {
+                _allJadwal = maps.map((item) => JadwalPasienItem.fromMap(item)).toList();
+              });
+            }
+          }
+        }
       }
     } catch (e) {
-      debugPrint("Terjadi error saat load data SQLite: $e");
+      debugPrint("Terjadi error saat memuat database SQLite: $e");
     } finally {
-      if (mounted) {
+      if (mounted && !silentReload) {
         setState(() => _isLoading = false);
       }
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
-    // KITA LONGGARKAN FILTERNYA:
-    // Tab Aktif: Menampilkan semua data yang 'isCompleted == 0' tanpa peduli teks statusnya apa
     final jadwalAktif = _allJadwal.where((j) => j.isCompleted == 0).toList();
-
-    // Tab Riwayat: Menampilkan data yang sudah ditandai selesai
     final riwayatJadwal = _allJadwal.where((j) => j.isCompleted == 1).toList();
 
     return Scaffold(
@@ -120,11 +132,7 @@ class _JadwalScreenState extends State<JadwalScreen>
         elevation: 0,
         title: const Text(
           'Jadwal Konsultasi',
-          style: TextStyle(
-            color: TBCareTheme.primary,
-            fontWeight: FontWeight.w700,
-            fontSize: 20,
-          ),
+          style: TextStyle(color: TBCareTheme.primary, fontWeight: FontWeight.w700, fontSize: 20),
         ),
         bottom: TabBar(
           controller: _tabController,
@@ -132,16 +140,11 @@ class _JadwalScreenState extends State<JadwalScreen>
           unselectedLabelColor: Colors.grey,
           indicatorColor: TBCareTheme.primary,
           indicatorSize: TabBarIndicatorSize.tab,
-          tabs: const [
-            Tab(text: 'Jadwal Aktif'),
-            Tab(text: 'Riwayat'),
-          ],
+          tabs: const [Tab(text: 'Jadwal Aktif'), Tab(text: 'Riwayat')],
         ),
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: TBCareTheme.primary),
-            )
+          ? const Center(child: CircularProgressIndicator(color: TBCareTheme.primary))
           : TabBarView(
               controller: _tabController,
               children: [
@@ -153,35 +156,21 @@ class _JadwalScreenState extends State<JadwalScreen>
         onPressed: () => context.go(Routes.ajukanJadwal),
         backgroundColor: TBCareTheme.primary,
         icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: const Text(
-          'Ajukan Jadwal',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
+        label: const Text('Ajukan Jadwal', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       ),
     );
   }
 
-  Widget _buildJadwalList(
-    List<JadwalPasienItem> list, {
-    required bool isAktifTab,
-  }) {
+  Widget _buildJadwalList(List<JadwalPasienItem> list, {required bool isAktifTab}) {
     if (list.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              isAktifTab
-                  ? Icons.calendar_today_outlined
-                  : Icons.history_rounded,
-              size: 56,
-              color: Colors.grey.shade400,
-            ),
+            Icon(isAktifTab ? Icons.calendar_today_outlined : Icons.history_rounded, size: 56, color: Colors.grey.shade400),
             const SizedBox(height: 12),
             Text(
-              isAktifTab
-                  ? 'Tidak ada jadwal konsultasi aktif'
-                  : 'Belum ada riwayat konsultasi',
+              isAktifTab ? 'Tidak ada jadwal konsultasi aktif' : 'Belum ada riwayat konsultasi',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
             ),
           ],
@@ -190,7 +179,7 @@ class _JadwalScreenState extends State<JadwalScreen>
     }
 
     return RefreshIndicator(
-      onRefresh: _loadDataJadwal,
+      onRefresh: () => _loadDataJadwal(silentReload: false),
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
         itemCount: list.length,
@@ -209,18 +198,8 @@ class _JadwalCard extends StatelessWidget {
       final String datePart = rawDateTime.split(' ')[0];
       final parsed = DateTime.parse(datePart);
       final months = [
-        'Januari',
-        'Februari',
-        'Maret',
-        'April',
-        'Mei',
-        'Juni',
-        'Juli',
-        'Agustus',
-        'September',
-        'Oktober',
-        'November',
-        'Desember',
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
       ];
       return '${parsed.day} ${months[parsed.month - 1]} ${parsed.year}';
     } catch (_) {
@@ -237,7 +216,6 @@ class _JadwalCard extends StatelessWidget {
   }
 
   Color _getStatusColor(String status) {
-    // Normalisasi string status agar tidak sensitif huruf besar-kecil
     final normalized = status.trim().toLowerCase();
     if (normalized.contains('mendatang')) return TBCareTheme.primary;
     if (normalized.contains('konfirmasi')) return const Color(0xFFF57F17);
@@ -259,83 +237,68 @@ class _JadwalCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(width: 5, color: statusColor),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: statusColor.withOpacity(0.2),
+        // MEMBUNGKUS CARD DENGAN INKWELL AGAR BISA DIKLIK DAN MEMILIKI EFEK RIPPLE
+        child: InkWell(
+          onTap: () {
+            // Hanya izinkan reschedule jika jadwal tersebut belum selesai / dicancel admin
+            if (item.isCompleted == 0 && !item.status.toLowerCase().contains('batal')) {
+              // Navigasi ke halaman reschedule dengan menyertakan ID janji temu melalui rute GoRouter Anda
+              // Sesuai dengan setup GoRouter Anda, pastikan jalurnya menerima id (misal: '${Routes.reschedule}?id=${item.id}')
+              context.go('/pasien/jadwal/reschedule?id=${item.id}'); 
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Jadwal yang telah selesai atau dibatalkan tidak dapat diubah.'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 5, color: statusColor),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: statusColor.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: statusColor.withOpacity(0.2)),
+                              ),
+                              child: Text(
+                                item.status, 
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)
                               ),
                             ),
-                            child: Text(
-                              item.status,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: statusColor,
-                              ),
+                            Row(
+                              children: [
+                                const Icon(Icons.access_time_rounded, size: 14, color: Colors.grey),
+                                const SizedBox(width: 4),
+                                Text('${_getJamMenit(item.tanggalJam)} WIB', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF555555))),
+                              ],
                             ),
-                          ),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.access_time_rounded,
-                                size: 14,
-                                color: Colors.grey,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${_getJamMenit(item.tanggalJam)} WIB',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF555555),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _getTanggalLokal(item.tanggalJam),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        item.tipeKonsul,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
+                        const SizedBox(height: 12),
+                        Text(_getTanggalLokal(item.tanggalJam), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A))),
+                        const SizedBox(height: 4),
+                        Text(item.tipeKonsul, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

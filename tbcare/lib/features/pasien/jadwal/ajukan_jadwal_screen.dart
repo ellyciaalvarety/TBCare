@@ -77,7 +77,7 @@ class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
       final String appointmentId =
           'APT-${DateTime.now().millisecondsSinceEpoch}';
 
-      // 3. INSERT sesuai dengan skema tabel appointments di DatabaseHelper Anda
+      // 3. INSERT sesuai skema tabel appointments di database Anda
       await db.insert('appointments', {
         'id': appointmentId, // TEXT PRIMARY KEY
         'patientName': userName, // TEXT
@@ -85,7 +85,7 @@ class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
         'type': 'Konsultasi Rutin TBC', // TEXT
         'time':
             '$tanggalStr $_selectedTime', // TEXT (Format gabungan YYYY-MM-DD HH:MM)
-        'room': 'Menunggu Konfirmasi', // TEXT (Menjadi status awal)
+        'room': 'Menunggu Konfirmasi', // TEXT
         'isCompleted': 0, // INTEGER (0 = Belum selesai)
       });
 
@@ -100,6 +100,7 @@ class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
         ),
       );
 
+      // Kembali menggunakan go router rute jadwal pasien
       context.go(Routes.jadwalPasien);
     } catch (e) {
       debugPrint('Gagal mengajukan jadwal ke SQLite: $e');
@@ -196,37 +197,41 @@ class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
           children: [
             _SectionCard(
               title: 'Pilih Tanggal Konsultasi',
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: TBCareTheme.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
+              child: Material(
+                color: Colors
+                    .transparent, // Mengatasi linter: ListTile background color
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: TBCareTheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.calendar_today_rounded,
+                      color: TBCareTheme.primary,
+                      size: 20,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.calendar_today_rounded,
-                    color: TBCareTheme.primary,
-                    size: 20,
+                  title: Text(
+                    _formatDate(_selectedDate),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
                   ),
-                ),
-                title: Text(
-                  _formatDate(_selectedDate),
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                  subtitle: const Text(
+                    'Ketuk untuk mengubah tanggal',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
+                  trailing: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.grey,
+                  ),
+                  onTap: () => _selectDate(context),
                 ),
-                subtitle: const Text(
-                  'Ketuk untuk mengubah tanggal',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                trailing: const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.grey,
-                ),
-                onTap: () => _selectDate(context),
               ),
             ),
             const SizedBox(height: 20),

@@ -1,3 +1,5 @@
+// app/routes.dart
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -9,6 +11,7 @@ import 'package:tbcare/features/pasien/home/home_screen.dart';
 import 'package:tbcare/features/pasien/laporan_harian/laporan_screen.dart';
 import 'package:tbcare/features/pasien/jadwal/jadwal_screen.dart';
 import 'package:tbcare/features/pasien/jadwal/ajukan_jadwal_screen.dart';
+import 'package:tbcare/features/pasien/jadwal/reschedule_screen.dart';
 import 'package:tbcare/features/pasien/riwayat/riwayat_screen.dart';
 import 'package:tbcare/features/pasien/profil/profil_screen.dart';
 
@@ -39,6 +42,10 @@ class Routes {
   static const laporan = '/pasien/laporan';
   static const jadwalPasien = '/pasien/jadwal';
   static const ajukanJadwal = '/pasien/jadwal/ajukan';
+
+  // Karena kita menggunakan query parameter (?id=xxx), path static-nya cukup sampai kata 'reschedule'
+  static const rescheduleJadwal = '/pasien/jadwal/reschedule';
+
   static const riwayat = '/pasien/riwayat';
   static const profilPasien = '/pasien/profil';
 
@@ -66,8 +73,7 @@ final router = GoRouter(
 
     // Pasien shell
     ShellRoute(
-      builder: (context, state, child) =>
-          BottomNavPasien(child: child),
+      builder: (context, state, child) => BottomNavPasien(child: child),
       routes: [
         GoRoute(
           path: Routes.pasienHome,
@@ -82,11 +88,20 @@ final router = GoRouter(
           builder: (context, state) => const JadwalScreen(),
           routes: [
             GoRoute(
-              path: 'ajukan',
-              builder: (context, state) =>
-                  const AjukanJadwalScreen(),
+              path:
+                  'ajukan', // Path relatif terhadap /pasien/jadwal menghasilkan: /pasien/jadwal/ajukan
+              builder: (context, state) => const AjukanJadwalScreen(),
             ),
           ],
+        ),
+        // Kita taruh Reschedule selevel dengan jadwalPasien agar pembacaan absolut path-nya tidak konflik
+        GoRoute(
+          path: Routes.rescheduleJadwal, // '/pasien/jadwal/reschedule'
+          builder: (context, state) {
+            // Mengambil id dari query parameter URL (?id=xxx)
+            final appointmentId = state.uri.queryParameters['id'] ?? '';
+            return RescheduleScreen(appointmentId: appointmentId);
+          },
         ),
         GoRoute(
           path: Routes.riwayat,
@@ -101,8 +116,7 @@ final router = GoRouter(
 
     // Dokter / Perawat shell
     ShellRoute(
-      builder: (context, state, child) =>
-          BottomNavMedis(child: child),
+      builder: (context, state, child) => BottomNavMedis(child: child),
       routes: [
         GoRoute(
           path: Routes.patients,
@@ -126,10 +140,8 @@ final router = GoRouter(
                     GoRoute(
                       path: ':tanggal',
                       builder: (context, state) {
-                        final patientId =
-                            state.pathParameters['id']!;
-                        final tanggal =
-                            state.pathParameters['tanggal']!;
+                        final patientId = state.pathParameters['id']!;
+                        final tanggal = state.pathParameters['tanggal']!;
                         return DetailLaporanScreen(
                           patientId: patientId,
                           tanggal: tanggal,
@@ -154,7 +166,8 @@ final router = GoRouter(
                   builder: (context, state) {
                     final patientId = state.pathParameters['id']!;
                     return dokter_ajukan.AjukanJadwalScreen(
-                        patientId: patientId);
+                      patientId: patientId,
+                    );
                   },
                 ),
               ],
@@ -163,13 +176,11 @@ final router = GoRouter(
         ),
         GoRoute(
           path: Routes.jadwalMedis,
-          builder: (context, state) =>
-              const dokter_jadwal.JadwalScreen(),
+          builder: (context, state) => const dokter_jadwal.JadwalScreen(),
         ),
         GoRoute(
           path: Routes.profilMedis,
-          builder: (context, state) =>
-              const dokter_profil.ProfilScreen(),
+          builder: (context, state) => const dokter_profil.ProfilScreen(),
           routes: [
             GoRoute(
               path: 'edit',
@@ -181,7 +192,6 @@ final router = GoRouter(
       ],
     ),
   ],
-
   errorBuilder: (context, state) => Scaffold(
     body: Center(
       child: Text(
