@@ -3,8 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tbcare/app/theme.dart'; // Menggunakan tema global TBCareTheme Anda
-import 'package:tbcare/shared/database/database_helper.dart'; // Import DatabaseHelper Anda
+import 'package:tbcare/app/theme.dart';
+import 'package:tbcare/shared/database/database_helper.dart';
 
 class EditProfilScreen extends StatefulWidget {
   const EditProfilScreen({super.key});
@@ -25,7 +25,9 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
 
   String _selectedGender = 'Pria';
   bool _isLoading = true;
-  String? _doctorId; // Menyimpan ID dokter untuk klausa WHERE saat update
+
+  // Menggunakan userId hasil relasi sebagai acuan klausa WHERE utama
+  int? _userId;
 
   @override
   void initState() {
@@ -33,52 +35,62 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
     _loadCurrentProfile();
   }
 
-  // Memuat data profil terkini dari SQLite
+  // Memuat data profil gabungan dari tabel users & doctors berdasarkan sesi email login
   Future<void> _loadCurrentProfile() async {
     setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      _doctorId = prefs.getString('doctor_id');
-      final String? savedEmail = prefs.getString('doctor_email');
+      final String? savedEmail =
+          prefs.getString('email') ?? prefs.getString('doctor_email');
 
-      final db = await DatabaseHelper().database;
-      List<Map<String, dynamic>> result = [];
+      if (savedEmail != null) {
+        final db = await DatabaseHelper().database;
+        final cleanEmail = savedEmail.trim().toLowerCase();
 
-      if (_doctorId != null) {
-        result = await db.query(
-          'doctors',
-          where: 'id = ?',
-          whereArgs: [_doctorId],
+        // Query JOIN untuk menarik data kredensial (users) bersama data spesifik medis (doctors)
+        final List<Map<String, dynamic>> result = await db.rawQuery(
+          '''
+          SELECT u.id AS u_id, u.name, u.email, d.no_hp, d.str_number, d.spesialisasi, d.tanggal_lahir, d.jenis_kelamin
+          FROM users u
+          LEFT JOIN doctors d ON u.id = d.userId
+          WHERE LOWER(TRIM(u.email)) = ?
+        ''',
+          [cleanEmail],
         );
-      } else if (savedEmail != null) {
-        result = await db.query(
-          'doctors',
-          where: 'email = ?',
-          whereArgs: [savedEmail],
-        );
+
+        if (result.isNotEmpty) {
+          final data = result.first;
+          _userId = data['u_id'] as int?;
+          _nameController.text = data['name'] ?? '';
+          _emailController.text = data['email'] ?? '';
+          _birthDateController.text = data['tanggal_lahir'] == '-'
+              ? ''
+              : (data['tanggal_lahir'] ?? '');
+          _phoneController.text = data['no_hp'] == '-'
+              ? ''
+              : (data['no_hp'] ?? '');
+          _strController.text = data['str_number'] == '-'
+              ? ''
+              : (data['str_number'] ?? '');
+          _selectedGender = data['jenis_kelamin'] == 'Wanita'
+              ? 'Wanita'
+              : 'Pria';
+
+          setState(() {});
+          return;
+        }
       }
 
-      if (result.isNotEmpty) {
-        final data = result.first;
-        _doctorId = data['id']?.toString();
-        _nameController.text = data['nama'] ?? '';
-        _birthDateController.text = data['tanggal_lahir'] ?? '';
-        _phoneController.text = data['no_hp'] ?? '';
-        _emailController.text = data['email'] ?? '';
-        _strController.text = data['str_number'] ?? '';
-        _selectedGender = data['jenis_kelamin'] == 'Wanita' ? 'Wanita' : 'Pria';
-      } else {
-        // Fallback data bawaan jika record belum ada di database
-        _nameController.text =
-            prefs.getString('doctor_name') ?? 'Dr. Budi Santoso';
-        _birthDateController.text = '12 Oktober 1990';
-        _phoneController.text = '0812345678';
-        _emailController.text = savedEmail ?? 'dr.budi@tbcare.com';
-        _strController.text = 'STR-2024-8842';
-        _selectedGender = 'Pria';
-      }
+      // Fallback data bawaan jika record tidak ditemukan atau terjadi anomali sesi
+      _nameController.text =
+          prefs.getString('doctor_name') ?? 'Dr. Budi Santoso';
+      _birthDateController.text = '12 Oktober 1990';
+      _phoneController.text = '0812345678';
+      _emailController.text = savedEmail ?? 'dr.budi@tbcare.com';
+      _strController.text = 'STR-2024-8842';
+      _selectedGender = 'Pria';
     } catch (e) {
-      debugPrint('Gagal memuat data edit profil: $e');
+      debugPrint('Gagal memuat data edit profil dokter: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -86,7 +98,7 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
     }
   }
 
-  // Menyimpan pembaruan data profil ke dalam SQLite
+  // Menyimpan pembaruan data profil ke dalam tabel 'users' dan 'doctors'
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -96,55 +108,62 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
       final db = await DatabaseHelper().database;
       final prefs = await SharedPreferences.getInstance();
 
-      final Map<String, dynamic> updatedData = {
-        'nama': _nameController.text.trim(),
-        'tanggal_lahir': _birthDateController.text.trim(),
-        'no_hp': _phoneController.text.trim(),
-        'email': _emailController.text.trim(),
-        'str_number': _strController.text.trim(),
-        'jenis_kelamin': _selectedGender,
-      };
-
-      int rowsAffected = 0;
-
-      if (_doctorId != null) {
-        rowsAffected = await db.update(
-          'doctors',
-          updatedData,
-          where: 'id = ?',
-          whereArgs: [_doctorId],
-        );
-      } else {
-        // Jika ID belum terdaftar, gunakan email sebagai key alternatif pembantu
-        rowsAffected = await db.update(
-          'doctors',
-          updatedData,
-          where: 'email = ?',
-          whereArgs: [_emailController.text.trim()],
-        );
+      if (_userId == null) {
+        throw Exception('User ID tidak valid. Sesi autentikasi kedaluwarsa.');
       }
 
-      // Ikut perbarui data SharedPreferences agar konsisten di seluruh sesi app
-      await prefs.setString('doctor_name', _nameController.text.trim());
-      await prefs.setString('doctor_email', _emailController.text.trim());
+      final String inputEmail = _emailController.text.trim().toLowerCase();
+      final String inputNama = _nameController.text.trim();
+
+      // Menggunakan mekanisme Transaction agar pembaruan data antar-tabel konsisten dan aman
+      await db.transaction((txn) async {
+        // 1. Perbarui nama dan email di tabel induk 'users'
+        await txn.update(
+          'users',
+          {'name': inputNama, 'email': inputEmail},
+          where: 'id = ?',
+          whereArgs: [_userId],
+        );
+
+        // 2. Perbarui data spesifik dokter di tabel 'doctors'
+        await txn.update(
+          'doctors',
+          {
+            'no_hp': _phoneController.text.trim(),
+            'str_number': _strController.text.trim(),
+            'tanggal_lahir': _birthDateController.text.trim(),
+            'jenis_kelamin': _selectedGender,
+          },
+          where: 'userId = ?',
+          whereArgs: [_userId],
+        );
+      });
+
+      // Sinkronisasi data SharedPreferences agar nama di header utama ikut ter-update tanpa relogin
+      await prefs.setString('doctor_name', inputNama);
+      await prefs.setString('email', inputEmail);
+      await prefs.setString('doctor_email', inputEmail);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Profil berhasil diperbarui'),
+            content: Text('Profil dokter berhasil diperbarui'),
             backgroundColor: TBCareTheme.primary,
+            behavior: SnackBarBehavior.floating,
           ),
         );
-        context
-            .pop(); // Kembali ke halaman ProfilScreen dan memicu refresh otomatis
+        context.pop();
       }
     } catch (e) {
-      debugPrint('Gagal menyimpan perubahan profil: $e');
+      debugPrint('Gagal menyimpan perubahan profil dokter: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Terjadi kesalahan saat menyimpan data'),
+          SnackBar(
+            content: Text(
+              'Gagal memperbarui data: ${e.toString().replaceAll('Exception: ', '')}',
+            ),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -182,7 +201,7 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
           onPressed: () => context.pop(),
         ),
         title: const Text(
-          'Edit Profil',
+          'Edit Profil Dokter',
           style: TextStyle(
             color: TBCareTheme.primary,
             fontWeight: FontWeight.w700,
@@ -220,11 +239,13 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
                   vertical: 20,
                 ),
                 children: [
-                  _buildInputLabel('Nama Lengkap'),
+                  _buildInputLabel('Nama Lengkap Dokter'),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _nameController,
-                    decoration: _buildInputDecoration('Masukkan nama lengkap'),
+                    decoration: _buildInputDecoration(
+                      'Masukkan nama lengkap beserta gelar',
+                    ),
                     validator: (v) => v == null || v.isEmpty
                         ? 'Nama tidak boleh kosong'
                         : null,
@@ -301,13 +322,13 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  _buildInputLabel('No. Handphone'),
+                  _buildInputLabel('No. Handphone Medis'),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
                     decoration: _buildInputDecoration(
-                      'Masukkan nomor handphone',
+                      'Masukkan nomor handphone aktif',
                     ),
                     validator: (v) => v == null || v.isEmpty
                         ? 'Nomor HP tidak boleh kosong'
@@ -315,26 +336,29 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  _buildInputLabel('Email'),
+                  _buildInputLabel('Email Akun'),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     decoration: _buildInputDecoration('Masukkan alamat email'),
                     validator: (v) {
-                      if (v == null || v.isEmpty)
+                      if (v == null || v.isEmpty) {
                         return 'Email tidak boleh kosong';
+                      }
                       if (!v.contains('@')) return 'Format email tidak valid';
                       return null;
                     },
                   ),
                   const SizedBox(height: 20),
 
-                  _buildInputLabel('STR Number'),
+                  _buildInputLabel('Nomor STR (Surat Tanda Registrasi)'),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _strController,
-                    decoration: _buildInputDecoration('Masukkan nomor STR'),
+                    decoration: _buildInputDecoration(
+                      'Masukkan nomor STR resmi',
+                    ),
                     validator: (v) => v == null || v.isEmpty
                         ? 'Nomor STR tidak boleh kosong'
                         : null,

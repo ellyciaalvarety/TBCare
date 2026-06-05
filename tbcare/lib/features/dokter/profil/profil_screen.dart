@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tbcare/app/routes.dart';
 import 'package:tbcare/app/theme.dart';
 import 'package:tbcare/shared/widgets/tbcare_app_bar.dart';
-import 'package:tbcare/shared/database/database_helper.dart'; // Import DatabaseHelper Anda
+import 'package:tbcare/shared/database/database_helper.dart';
 
 class ProfilScreen extends StatefulWidget {
   const ProfilScreen({super.key});
@@ -18,7 +18,7 @@ class ProfilScreen extends StatefulWidget {
 class _ProfilScreenState extends State<ProfilScreen> {
   bool _isLoading = true;
 
-  // State Informasi Profil Dokter (dengan fallback data dummy)
+  // State Informasi Profil Dokter
   String _namaDokter = 'Memuat...';
   String _spesialisasi = '-';
   String _tanggalLahir = '-';
@@ -33,59 +33,59 @@ class _ProfilScreenState extends State<ProfilScreen> {
     _loadProfileData();
   }
 
+  // Menarik data dokter secara berkala dari database
   Future<void> _loadProfileData() async {
     setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
+      final String? savedEmail =
+          prefs.getString('email') ?? prefs.getString('doctor_email');
 
-      // Ambil ID dokter atau email yang tersimpan saat login
-      final String? doctorId = prefs.getString('doctor_id');
-      final String? savedEmail = prefs.getString('doctor_email');
+      if (savedEmail != null) {
+        final db = await DatabaseHelper().database;
+        final cleanEmail = savedEmail.trim().toLowerCase();
 
-      final db = await DatabaseHelper().database;
-
-      // Ambil data dari tabel 'doctors' / 'users' di SQLite
-      List<Map<String, dynamic>> result = [];
-
-      if (doctorId != null) {
-        result = await db.query(
-          'doctors',
-          where: 'id = ?',
-          whereArgs: [doctorId],
+        // Menggunakan SQL JOIN untuk mengambil 'name' dari tabel users dan relasi sisa kolom dari tabel doctors
+        final List<Map<String, dynamic>> result = await db.rawQuery(
+          '''
+          SELECT u.name, u.email, d.no_hp, d.str_number, d.spesialisasi, d.tanggal_lahir, d.jenis_kelamin
+          FROM users u
+          LEFT JOIN doctors d ON u.id = d.userId
+          WHERE LOWER(TRIM(u.email)) = ?
+        ''',
+          [cleanEmail],
         );
-      } else if (savedEmail != null) {
-        result = await db.query(
-          'doctors',
-          where: 'email = ?',
-          whereArgs: [savedEmail],
-        );
+
+        if (result.isNotEmpty) {
+          final data = result.first;
+          setState(() {
+            _namaDokter = data['name'] ?? 'Dr. Tanpa Nama';
+            _spesialisasi =
+                (data['spesialisasi'] == null || data['spesialisasi'] == '-')
+                ? 'Dokter Spesialis Paru'
+                : data['spesialisasi'];
+            _tanggalLahir = data['tanggal_lahir'] ?? '-';
+            _jenisKelamin = data['jenis_kelamin'] ?? '-';
+            _noHp = data['no_hp'] ?? '-';
+            _email = data['email'] ?? '-';
+            _strNumber = data['str_number'] ?? '-';
+          });
+          return;
+        }
       }
 
-      if (result.isNotEmpty) {
-        final data = result.first;
-        setState(() {
-          _namaDokter = data['nama'] ?? 'Dr. Tanpa Nama';
-          _spesialisasi = data['spesialisasi'] ?? 'Dokter Umum';
-          _tanggalLahir = data['tanggal_lahir'] ?? '-';
-          _jenisKelamin = data['jenis_kelamin'] ?? '-';
-          _noHp = data['no_hp'] ?? '-';
-          _email = data['email'] ?? '-';
-          _strNumber = data['str_number'] ?? '-';
-        });
-      } else {
-        // Fallback jika data di database SQLite belum sinkron, gunakan data dari SharedPreferences atau dummy awal
-        setState(() {
-          _namaDokter = prefs.getString('doctor_name') ?? 'Dr. Budi Santoso';
-          _spesialisasi = 'Dokter Spesialis Paru';
-          _tanggalLahir = '12 Oktober 1990';
-          _jenisKelamin = 'Pria';
-          _noHp = '0812345678';
-          _email = savedEmail ?? 'dr.budi@tbcare.com';
-          _strNumber = 'STR-2024-8842';
-        });
-      }
+      // Fallback cadangan eksternal
+      setState(() {
+        _namaDokter = prefs.getString('doctor_name') ?? 'Dr. Budi Santoso';
+        _spesialisasi = 'Dokter Spesialis Paru';
+        _tanggalLahir = '12 Oktober 1990';
+        _jenisKelamin = 'Pria';
+        _noHp = '0812345678';
+        _email = savedEmail ?? 'dr.budi@tbcare.com';
+        _strNumber = 'STR-2024-8842';
+      });
     } catch (e) {
-      debugPrint('Gagal memuat data profil dokter: $e');
+      debugPrint('Gagal memuat data profil dokter dari SQLite: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -97,8 +97,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F7),
-      appBar:
-          const TBCareAppBar(), // Menggunakan file tbcare_app_bar.dart[cite: 14]
+      appBar: const TBCareAppBar(),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: TBCareTheme.primary),
@@ -109,7 +108,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 children: [
                   const SizedBox(height: 20),
 
-                  // Avatar
+                  // Avatar Lingkaran
                   Container(
                     width: 100,
                     height: 100,
@@ -140,7 +139,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Informasi Pribadi
+                  // Card Informasi Pribadi
                   _buildCard(
                     title: 'Informasi Pribadi',
                     children: [
@@ -159,7 +158,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Informasi Akun
+                  // Card Informasi Akun Medis
                   _buildCard(
                     title: 'Informasi Akun',
                     children: [
@@ -185,7 +184,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: () async {
-                            // Menunggu kembalinya dari halaman edit, jika ada pembaruan data, refresh screen
+                            // Menunggu pemicu edit selesai, lalu memuat ulang data terbaru
                             await context.push(Routes.profilMedisEdit);
                             _loadProfileData();
                           },
@@ -211,7 +210,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Logout
+                  // Tombol Keluar Sistem
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -321,7 +320,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Konfirmasi Logout'),
-        content: const Text('Apakah Anda yakin ingin keluar?'),
+        content: const Text(
+          'Apakah Anda yakin ingin keluar dari aplikasi TBCare?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -331,9 +332,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
             onPressed: () async {
               Navigator.of(ctx).pop();
               final prefs = await SharedPreferences.getInstance();
-              await prefs.clear(); // Bersihkan session[cite: 14]
-              if (context.mounted)
-                context.go(Routes.login); // Redirect ke login[cite: 14]
+              await prefs.clear();
+              if (context.mounted) {
+                context.go(Routes.login);
+              }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Logout'),

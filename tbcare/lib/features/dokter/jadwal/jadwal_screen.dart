@@ -3,12 +3,12 @@
 import 'package:flutter/material.dart';
 import 'package:tbcare/app/theme.dart';
 import 'package:tbcare/shared/widgets/tbcare_app_bar.dart';
-import 'package:tbcare/shared/database/database_helper.dart'; // Import DatabaseHelper Anda
+import 'package:tbcare/shared/database/database_helper.dart';
 
 class Appointment {
   final String id;
   final String patientName;
-  final String patientId;
+  final String patientId; // Tetap String di model UI tidak apa-apa
   final String type;
   final String time;
   final String room;
@@ -29,7 +29,8 @@ class Appointment {
     return Appointment(
       id: map['id'].toString(),
       patientName: map['patientName'] ?? '',
-      patientId: map['patientId'] ?? '',
+      // PERBAIKAN: Ditambahkan .toString() karena di database bertipe INTEGER
+      patientId: map['patientId'] != null ? map['patientId'].toString() : '',
       type: map['type'] ?? '',
       time: map['time'] ?? '',
       room: map['room'] ?? '',
@@ -58,6 +59,7 @@ class _JadwalScreenState extends State<JadwalScreen> {
 
   // Fungsi untuk mengambil data dari SQLite
   Future<void> _loadAppointments() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final db = await DatabaseHelper().database;
@@ -65,19 +67,23 @@ class _JadwalScreenState extends State<JadwalScreen> {
       // Ambil semua data dari tabel appointments
       final List<Map<String, dynamic>> maps = await db.query('appointments');
 
-      setState(() {
-        _appointments = maps.map((map) => Appointment.fromMap(map)).toList();
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _appointments = maps.map((map) => Appointment.fromMap(map)).toList();
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal memuat jadwal: $e'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memuat jadwal: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -103,6 +109,7 @@ class _JadwalScreenState extends State<JadwalScreen> {
           content: Text('Konsultasi telah selesai'),
           backgroundColor: TBCareTheme.primary,
           duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } catch (e) {
@@ -111,6 +118,7 @@ class _JadwalScreenState extends State<JadwalScreen> {
         SnackBar(
           content: Text('Gagal memperbarui status: $e'),
           backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }

@@ -21,6 +21,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
 
+  // Status pilihan default peran registrasi
+  String _selectedRole = 'pasien';
+
   bool _obscurePass = true;
   bool _obscureConfirm = true;
   bool _isLoading = false;
@@ -82,7 +85,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final db = await DatabaseHelper().database;
       final emailClean = _emailCtrl.text.trim().toLowerCase();
 
-      // 1. Validasi apakah email sudah terdaftar
+      // 1. Validasi apakah email sudah terdaftar di sistem
       final List<Map<String, dynamic>> existingUser = await db.query(
         'users',
         where: 'email = ?',
@@ -94,6 +97,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Email sudah terdaftar! Gunakan email lain.'),
+              behavior: SnackBarBehavior.floating,
             ),
           );
         }
@@ -101,38 +105,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return;
       }
 
-      // 2. Insert ke tabel 'users' dan tangkap ID Auto-increment yang dihasilkan
+      // 2. Simpan kredensial utama ke dalam tabel 'users'
       final int newUserId = await db.insert('users', {
         'name': _idCtrl.text.trim(),
         'email': emailClean,
         'password': _passCtrl.text,
-        'role': 'pasien',
+        'role':
+            _selectedRole, // Menyimpan string pilihan 'pasien' atau 'dokter'
       });
 
-      // 3. Insert ke tabel 'patients' menggunakan 'userId' yang baru saja didapatkan
-      await db.insert('patients', {
-        'nama': _idCtrl.text.trim(),
-        'userId': newUserId, // Mengikat relasi ke user id secara tepat
-        'phone': _phoneCtrl.text.trim(),
-        'pid': 'P-${_idCtrl.text.trim().hashCode.toString().substring(0, 4)}',
-        'kepatuhan': 100.0,
-        'terakhir_cek': DateTime.now().toIso8601String().substring(0, 10),
-        'risiko': 'PasienRisiko.stabil',
-        'tanggal_lahir': '-',
-        'jenis_kelamin': '-',
-      });
+      // 3. Percabangan penyimpanan data profil berdasarkan peran terpilih
+      if (_selectedRole == 'pasien') {
+        // Insert profil ke tabel 'patients' jika mendaftar sebagai pasien
+        await db.insert('patients', {
+          'nama': _idCtrl.text.trim(),
+          'userId': newUserId,
+          'phone': _phoneCtrl.text.trim(),
+          'pid': 'P-${_idCtrl.text.trim().hashCode.toString().substring(0, 4)}',
+          'kepatuhan': 100.0,
+          'terakhir_cek': DateTime.now().toIso8601String().substring(0, 10),
+          'risiko': 'PasienRisiko.stabil',
+          'tanggal_lahir': '-',
+          'jenis_kelamin': '-',
+        });
+      } else {
+        // Insert profil ke tabel 'doctors' jika mendaftar sebagai dokter/medis
+        await db.insert('doctors', {
+          'userId': newUserId,
+          'no_hp': _phoneCtrl.text.trim(),
+          'str_number':
+              'STR-${_idCtrl.text.trim().hashCode.toString().substring(0, 5)}', // Generate dummy nomor STR awal
+          'spesialisasi': 'Dokter Umum / Spesialis Paru',
+          'tanggal_lahir': '-',
+          'jenis_kelamin': '-',
+        });
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Akun Berhasil Dibuat! Silakan Login.')),
+          const SnackBar(
+            content: Text('Akun Berhasil Dibuat! Silakan Login.'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         context.go(Routes.login);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Registrasi Gagal: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Registrasi Gagal: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -160,22 +186,48 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Silakan isi form di bawah ini untuk membuat akun pasien.',
+                'Silakan isi form di bawah ini untuk membuat akun ${_selectedRole == 'pasien' ? 'pasien' : 'dokter'}.',
                 style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               Form(
                 key: _formKey,
                 child: Column(
                   children: [
+                    // Dropdown untuk pemilihan Peran Pengguna
+                    DropdownButtonFormField<String>(
+                      value: _selectedRole,
+                      decoration: const InputDecoration(
+                        labelText: 'Daftar Sebagai',
+                        prefixIcon: Icon(Icons.assignment_ind_outlined),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'pasien',
+                          child: Text('Pasien'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'dokter',
+                          child: Text('Dokter / Tenaga Medis'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _selectedRole = value;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _idCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Nama Lengkap / No Kartu ID',
+                        labelText: 'Nama Lengkap',
                         prefixIcon: Icon(Icons.person_outline),
                       ),
                       validator: (v) => v == null || v.isEmpty
-                          ? 'Field ini wajib diisi'
+                          ? 'Nama lengkap wajib diisi'
                           : null,
                     ),
                     const SizedBox(height: 16),
@@ -276,12 +328,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ? const CircularProgressIndicator(
                                 color: Colors.white,
                               )
-                            : const Row(
+                            : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text('Buat Akun Pasien'),
-                                  SizedBox(width: 8),
-                                  Icon(Icons.arrow_forward, size: 18),
+                                  Text(
+                                    _selectedRole == 'pasien'
+                                        ? 'Buat Akun Pasien'
+                                        : 'Buat Akun Dokter',
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(Icons.arrow_forward, size: 18),
                                 ],
                               ),
                       ),
