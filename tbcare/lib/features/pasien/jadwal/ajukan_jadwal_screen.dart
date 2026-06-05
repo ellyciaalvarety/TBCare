@@ -1,11 +1,11 @@
-//features/pasien/jadwal/ajukan_jadwal_screen.dart
+// features/pasien/jadwal/ajukan_jadwal_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tbcare/app/routes.dart';
 import 'package:tbcare/app/theme.dart';
-import 'package:tbcare/shared/database/database_helper.dart'; // Import DatabaseHelper Anda
+import 'package:tbcare/shared/database/database_helper.dart';
 
 class AjukanJadwalScreen extends StatefulWidget {
   const AjukanJadwalScreen({super.key});
@@ -15,10 +15,8 @@ class AjukanJadwalScreen extends StatefulWidget {
 }
 
 class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
-  DateTime _selectedDate = DateTime.now().add(
-    const Duration(days: 1),
-  ); // Default besok[cite: 22]
-  String _selectedTime = '08:00'; // Default jam[cite: 22]
+  DateTime _selectedDate = DateTime.now().add(const Duration(days: 1)); // Besok
+  String _selectedTime = '08:00';
   bool _isLoading = false;
 
   static const _timeSlots = [
@@ -31,64 +29,78 @@ class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
     '14:00',
     '15:00',
     '16:00',
-  ]; //[cite: 22]
+  ];
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 60)), //[cite: 22]
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: TBCareTheme.primary),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => _selectedDate = picked); //[cite: 22]
-  }
-
-  // Fungsi untuk menyimpan pengajuan jadwal ke dalam SQLite
   Future<void> _konfirmasi() async {
-    setState(() => _isLoading = true); //[cite: 22]
+    setState(() => _isLoading = true);
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String? patientId = prefs.getString('patient_id');
+      final String? email = prefs.getString('email');
 
-      if (patientId == null) {
-        throw Exception('Sesi pasien tidak ditemukan. Silakan login kembali.');
+      if (email == null || email.trim().isEmpty) {
+        throw Exception('Sesi login tidak ditemukan. Silakan login kembali.');
       }
 
       final db = await DatabaseHelper().database;
+      final cleanEmail = email.trim().toLowerCase();
 
-      // Format tanggal menjadi string YYYY-MM-DD agar mudah di-query di SQLite
+      // 1. Cari user di tabel users
+      final List<Map<String, dynamic>> userCheck = await db.query(
+        'users',
+        where: 'LOWER(TRIM(email)) = ?',
+        whereArgs: [cleanEmail],
+      );
+
+      if (userCheck.isEmpty) {
+        throw Exception('Data akun tidak terdaftar di database.');
+      }
+
+      final int userId = userCheck.first['id'];
+      final String userName = userCheck.first['name'] ?? 'Pasien';
+
+      // 2. Cari id asli dari tabel patients (sebagai Foreign Key)
+      final List<Map<String, dynamic>> patientCheck = await db.query(
+        'patients',
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+
+      if (patientCheck.isEmpty) {
+        throw Exception(
+          'Profil data pasien Anda belum dikonfigurasi di database.',
+        );
+      }
+
+      final int patientId = patientCheck.first['id'];
       final String tanggalStr = _selectedDate.toIso8601String().split('T')[0];
+      final String appointmentId =
+          'APT-${DateTime.now().millisecondsSinceEpoch}';
 
-      // Insert data ke tabel appointments/jadwal konsultasi
+      // 3. INSERT sesuai dengan skema tabel appointments di DatabaseHelper Anda
       await db.insert('appointments', {
-        'patient_id': patientId,
-        'tanggal': tanggalStr,
-        'jam': _selectedTime,
-        'status':
-            'Menunggu Konfirmasi', // Status awal pengajuan dari sisi pasien
-        'keterangan': 'Pengajuan konsultasi rutin TBC',
-        'created_at': DateTime.now().toIso8601String(),
+        'id': appointmentId, // TEXT PRIMARY KEY
+        'patientName': userName, // TEXT
+        'patientId': patientId, // INTEGER (FOREIGN KEY)
+        'type': 'Konsultasi Rutin TBC', // TEXT
+        'time':
+            '$tanggalStr $_selectedTime', // TEXT (Format gabungan YYYY-MM-DD HH:MM)
+        'room': 'Menunggu Konfirmasi', // TEXT (Menjadi status awal)
+        'isCompleted': 0, // INTEGER (0 = Belum selesai)
       });
 
-      if (!mounted) return; //[cite: 22]
-      setState(() => _isLoading = false); //[cite: 22]
+      if (!mounted) return;
+      setState(() => _isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Jadwal berhasil diajukan'),
+          content: Text('Jadwal konsultasi berhasil diajukan!'),
           backgroundColor: TBCareTheme.primary,
+          behavior: SnackBarBehavior.floating,
         ),
-      ); //[cite: 22]
+      );
 
-      // Kembali ke halaman utama jadwal pasien
-      context.go(Routes.jadwalPasien); //[cite: 22]
+      context.go(Routes.jadwalPasien);
     } catch (e) {
       debugPrint('Gagal mengajukan jadwal ke SQLite: $e');
       if (mounted) {
@@ -96,205 +108,202 @@ class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Gagal mengajukan jadwal: ${e.toString().replaceAll('Exception: ', '')}',
+              'Gagal mengajukan: ${e.toString().replaceAll('Exception: ', '')}',
             ),
-            backgroundColor: Colors.red,
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
     }
   }
 
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: TBCareTheme.primary,
+              onPrimary: Colors.white,
+              onSurface: Colors.black87,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final months = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+    final days = [
+      'Minggu',
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu',
+    ];
+    return '${days[date.weekday % 7]}, ${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final months = [
-      '',
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'Mei',
-      'Jun',
-      'Jul',
-      'Ags',
-      'Sep',
-      'Okt',
-      'Nov',
-      'Des',
-    ]; //[cite: 22]
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5), //[cite: 22]
+      backgroundColor: const Color(0xFFF8FAFA),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        scrolledUnderElevation: 0,
-        title: const Text(
-          'Ajukan Jadwal',
-          style: TextStyle(
-            color: TBCareTheme.primary,
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-          ),
-        ),
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: TBCareTheme.primary,
-            size: 20,
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => context.go(Routes.jadwalPasien),
+        ),
+        title: const Text(
+          'Ajukan Jadwal Konsultasi',
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
-          onPressed: () => context.go(Routes.jadwalPasien), //[cite: 22]
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 100), //[cite: 22]
-        children: [
-          // Pilih Tanggal
-          _SectionCard(
-            title: 'Pilih Tanggal', //[cite: 22]
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: _pickDate, //[cite: 22]
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ), //[cite: 22]
-                    decoration: BoxDecoration(
-                      color: TBCareTheme.primary.withOpacity(0.06), //[cite: 22]
-                      borderRadius: BorderRadius.circular(12), //[cite: 22]
-                      border: Border.all(
-                        color: TBCareTheme.primary.withOpacity(0.3),
-                      ), //[cite: 22]
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.calendar_today_rounded,
-                          size: 16,
-                          color: TBCareTheme.primary,
-                        ), //[cite: 22]
-                        const SizedBox(width: 10), //[cite: 22]
-                        Text(
-                          '${_selectedDate.day} ${months[_selectedDate.month]} ${_selectedDate.year}', //[cite: 22]
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: TBCareTheme.primary,
-                          ),
-                        ),
-                        const Spacer(), //[cite: 22]
-                        const Icon(
-                          Icons.arrow_drop_down,
-                          color: TBCareTheme.primary,
-                        ), //[cite: 22]
-                      ],
-                    ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionCard(
+              title: 'Pilih Tanggal Konsultasi',
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: TBCareTheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.calendar_today_rounded,
+                    color: TBCareTheme.primary,
+                    size: 20,
                   ),
                 ),
-              ],
+                title: Text(
+                  _formatDate(_selectedDate),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                subtitle: const Text(
+                  'Ketuk untuk mengubah tanggal',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.grey,
+                ),
+                onTap: () => _selectDate(context),
+              ),
             ),
-          ),
-
-          const SizedBox(height: 16), //[cite: 22]
-          // Pilih Waktu
-          _SectionCard(
-            title: 'Pilih Waktu', //[cite: 22]
-            child: Wrap(
-              spacing: 8, //[cite: 22]
-              runSpacing: 8, //[cite: 22]
-              children: _timeSlots.map((t) {
-                final isSelected = _selectedTime == t; //[cite: 22]
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedTime = t), //[cite: 22]
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150), //[cite: 22]
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 10,
-                    ), //[cite: 22]
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? TBCareTheme.primary
-                          : Colors.white, //[cite: 22]
-                      borderRadius: BorderRadius.circular(10), //[cite: 22]
-                      border: Border.all(
+            const SizedBox(height: 20),
+            _SectionCard(
+              title: 'Pilih Jam Konsultasi',
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _timeSlots.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: 2.2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                ),
+                itemBuilder: (context, index) {
+                  final time = _timeSlots[index];
+                  final isSelected = _selectedTime == time;
+                  return InkWell(
+                    onTap: () => setState(() => _selectedTime = time),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      decoration: BoxDecoration(
                         color: isSelected
                             ? TBCareTheme.primary
-                            : const Color(0xFFE0E0E0), //[cite: 22]
-                        width: isSelected ? 1.5 : 0.8, //[cite: 22]
+                            : Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isSelected
+                              ? TBCareTheme.primary
+                              : Colors.grey.shade300,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        time,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: isSelected ? Colors.white : Colors.black87,
+                        ),
                       ),
                     ),
-                    child: Text(
-                      t, //[cite: 22]
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: isSelected
-                            ? Colors.white
-                            : const Color(0xFF3D3D3D), //[cite: 22]
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
+                  );
+                },
+              ),
             ),
-          ),
-
-          const SizedBox(height: 16), //[cite: 22]
-          // Info
-          Container(
-            padding: const EdgeInsets.all(14), //[cite: 22]
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF8E1), //[cite: 22]
-              borderRadius: BorderRadius.circular(12), //[cite: 22]
-            ),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start, //[cite: 22]
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 16,
-                  color: Color(0xFFF57F17),
-                ), //[cite: 22]
-                SizedBox(width: 10), //[cite: 22]
-                Expanded(
-                  child: Text(
-                    'Pastikan Anda datang 15 menit sebelum waktu konsultasi dimulai untuk proses administrasi ulang.', //[cite: 22]
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFF57F17),
-                    ), //[cite: 22]
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
-
-      // Tombol konfirmasi fixed bawah
-      bottomSheet: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28), //[cite: 22]
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(20),
         decoration: const BoxDecoration(
-          color: Colors.white, //[cite: 22]
-          border: Border(
-            top: BorderSide(color: Color(0xFFEEEEEE)),
-          ), //[cite: 22]
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 10,
+              offset: Offset(0, -2),
+            ),
+          ],
         ),
         child: SizedBox(
-          width: double.infinity, //[cite: 22]
-          height: 52, //[cite: 22]
+          width: double.infinity,
+          height: 50,
           child: ElevatedButton.icon(
-            onPressed: _isLoading ? null : _konfirmasi, //[cite: 22]
+            onPressed: _isLoading ? null : _konfirmasi,
             style: ElevatedButton.styleFrom(
               backgroundColor: TBCareTheme.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              disabledBackgroundColor: TBCareTheme.primary.withOpacity(0.6),
+              elevation: 0,
             ),
             icon: _isLoading
                 ? const SizedBox(
@@ -304,8 +313,8 @@ class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
                       strokeWidth: 2,
                       color: Colors.white,
                     ),
-                  ) //[cite: 22]
-                : const Icon(Icons.check_rounded, size: 18), //[cite: 22]
+                  )
+                : const Icon(Icons.check_rounded, size: 18),
             label: const Text(
               'Konfirmasi Jadwal',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
@@ -320,34 +329,30 @@ class _AjukanJadwalScreenState extends State<AjukanJadwalScreen> {
 class _SectionCard extends StatelessWidget {
   final String title;
   final Widget child;
-
-  const _SectionCard({required this.title, required this.child}); //[cite: 22]
+  const _SectionCard({required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16), //[cite: 22]
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white, //[cite: 22]
-        borderRadius: BorderRadius.circular(16), //[cite: 22]
-        border: Border.all(
-          color: const Color(0xFFE8E8E8),
-          width: 0.8,
-        ), //[cite: 22]
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8E8E8), width: 0.8),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, //[cite: 22]
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title, //[cite: 22]
+            title,
             style: const TextStyle(
               fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF3D3D3D), //[cite: 22]
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
           ),
-          const SizedBox(height: 14), //[cite: 22]
-          child, //[cite: 22]
+          const SizedBox(height: 16),
+          child,
         ],
       ),
     );

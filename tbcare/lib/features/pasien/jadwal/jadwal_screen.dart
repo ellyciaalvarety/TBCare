@@ -1,36 +1,40 @@
-//features/pasien/jadwal/jadwal_screen.dart
+// features/pasien/jadwal/jadwal_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tbcare/app/routes.dart';
 import 'package:tbcare/app/theme.dart';
-import 'package:tbcare/shared/database/database_helper.dart'; // Sesuaikan lokasi DatabaseHelper
+import 'package:tbcare/shared/database/database_helper.dart';
 
-// Model Data Janji Temu Pasien
 class JadwalPasienItem {
-  final int? id;
-  final String tanggal; // Format: YYYY-MM-DD
-  final String jam;
-  final String
-  status; // 'Mendatang', 'Selesai', 'Menunggu Konfirmasi', 'Dibatalkan'
-  final String keterangan;
+  final String id;
+  final String tanggalJam;
+  final String status;
+  final String tipeKonsul;
+  final int isCompleted;
 
   const JadwalPasienItem({
-    this.id,
-    required this.tanggal,
-    required this.jam,
+    required this.id,
+    required this.tanggalJam,
     required this.status,
-    required this.keterangan,
+    required this.tipeKonsul,
+    required this.isCompleted,
   });
 
   factory JadwalPasienItem.fromMap(Map<String, dynamic> map) {
+    // Kita cetak log ke console untuk melihat isi asli data dari DB Anda
+    debugPrint("=== DATA DARI DATABASE ===");
+    debugPrint(
+      "ID: ${map['id']}, Time: ${map['time']}, Room/Status: ${map['room']}, IsCompleted: ${map['isCompleted']}",
+    );
+
     return JadwalPasienItem(
-      id: map['id'],
-      tanggal: map['tanggal'] ?? '',
-      jam: map['jam'] ?? '',
-      status: map['status'] ?? 'Menunggu Konfirmasi',
-      keterangan: map['keterangan'] ?? '',
+      id: map['id']?.toString() ?? '',
+      tanggalJam: map['time']?.toString() ?? '',
+      status: map['room']?.toString() ?? 'Menunggu Konfirmasi',
+      tipeKonsul: map['type']?.toString() ?? 'Konsultasi Rutin TBC',
+      isCompleted: map['isCompleted'] is int ? map['isCompleted'] : 0,
     );
   }
 }
@@ -61,23 +65,30 @@ class _JadwalScreenState extends State<JadwalScreen>
     super.dispose();
   }
 
-  // Mengambil riwayat jadwal dari SQLite berdasarkan pasien yang sedang login
   Future<void> _loadDataJadwal() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? patientId = prefs.getString('patient_id');
+      final db = await DatabaseHelper().database;
 
-      if (patientId != null) {
-        final db = await DatabaseHelper().database;
-        // Ambil data janji temu diurutkan dari yang paling baru diajukan/dijadwalkan
-        final List<Map<String, dynamic>> maps = await db.query(
-          'appointments',
-          where: 'patient_id = ?',
-          whereArgs: [patientId],
-          orderBy: 'tanggal DESC, jam DESC',
+      // BYPASS: Kita ambil SEMUA data dari tabel appointments tanpa filter patientId!
+      final List<Map<String, dynamic>> maps = await db.query(
+        'appointments',
+        orderBy: 'time DESC',
+      );
+
+      // Cetak ke log untuk melihat isi data aslinya di Run/Debug Console
+      debugPrint("===============================================");
+      debugPrint("TOTAL DATA DI TABEL APPOINTMENTS: ${maps.length} BARIS");
+      for (var row in maps) {
+        debugPrint(
+          "Isi Baris DB -> ID: ${row['id']}, patientId di DB: ${row['patientId']}, Nama: ${row['patientName']}, Jam: ${row['time']}",
         );
+      }
+      debugPrint("===============================================");
 
+      if (mounted) {
         setState(() {
           _allJadwal = maps
               .map((item) => JadwalPasienItem.fromMap(item))
@@ -85,32 +96,28 @@ class _JadwalScreenState extends State<JadwalScreen>
         });
       }
     } catch (e) {
-      debugPrint("Gagal memuat jadwal pasien: $e");
+      debugPrint("Terjadi error saat load data SQLite: $e");
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-
+  
   @override
   Widget build(BuildContext context) {
-    // Filter kategori jadwal aktif (Menunggu Konfirmasi & Mendatang)
-    final jadwalAktif = _allJadwal
-        .where(
-          (j) => j.status == 'Mendatang' || j.status == 'Menunggu Konfirmasi',
-        )
-        .toList();
+    // KITA LONGGARKAN FILTERNYA:
+    // Tab Aktif: Menampilkan semua data yang 'isCompleted == 0' tanpa peduli teks statusnya apa
+    final jadwalAktif = _allJadwal.where((j) => j.isCompleted == 0).toList();
 
-    // Filter kategori riwayat (Selesai & Dibatalkan)
-    final riwayatJadwal = _allJadwal
-        .where((j) => j.status == 'Selesai' || j.status == 'Dibatalkan')
-        .toList();
+    // Tab Riwayat: Menampilkan data yang sudah ditandai selesai
+    final riwayatJadwal = _allJadwal.where((j) => j.isCompleted == 1).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        scrolledUnderElevation: 0,
         title: const Text(
           'Jadwal Konsultasi',
           style: TextStyle(
@@ -142,11 +149,8 @@ class _JadwalScreenState extends State<JadwalScreen>
                 _buildJadwalList(riwayatJadwal, isAktifTab: false),
               ],
             ),
-      // Tombol mengambang untuk mengajukan jadwal baru
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go(
-          Routes.ajukanJadwal,
-        ), // Rute mengarah ke halaman AjukanJadwalScreen
+        onPressed: () => context.go(Routes.ajukanJadwal),
         backgroundColor: TBCareTheme.primary,
         icon: const Icon(Icons.add_rounded, color: Colors.white),
         label: const Text(
@@ -185,31 +189,25 @@ class _JadwalScreenState extends State<JadwalScreen>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(
-        16,
-        16,
-        16,
-        80,
-      ), // Padding bawah longgar agar tidak tertutup FAB
-      itemCount: list.length,
-      itemBuilder: (context, index) {
-        final item = list[index];
-        return _JadwalCard(item: item);
-      },
+    return RefreshIndicator(
+      onRefresh: _loadDataJadwal,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+        itemCount: list.length,
+        itemBuilder: (context, index) => _JadwalCard(item: list[index]),
+      ),
     );
   }
 }
 
 class _JadwalCard extends StatelessWidget {
   final JadwalPasienItem item;
-
   const _JadwalCard({required this.item});
 
-  // Fungsi helper memformat tampilan tanggal mentah YYYY-MM-DD menjadi format lokal ramah dibaca
-  String _formatTanggalLokal(String rawDate) {
+  String _getTanggalLokal(String rawDateTime) {
     try {
-      final parsed = DateTime.parse(rawDate);
+      final String datePart = rawDateTime.split(' ')[0];
+      final parsed = DateTime.parse(datePart);
       final months = [
         'Januari',
         'Februari',
@@ -226,23 +224,26 @@ class _JadwalCard extends StatelessWidget {
       ];
       return '${parsed.day} ${months[parsed.month - 1]} ${parsed.year}';
     } catch (_) {
-      return rawDate;
+      return rawDateTime;
     }
   }
 
+  String _getJamMenit(String rawDateTime) {
+    try {
+      final List<String> parts = rawDateTime.split(' ');
+      if (parts.length > 1) return parts[1];
+    } catch (_) {}
+    return '--:--';
+  }
+
   Color _getStatusColor(String status) {
-    switch (status) {
-      case 'Mendatang':
-        return TBCareTheme.primary;
-      case 'Menunggu Konfirmasi':
-        return const Color(0xFFF57F17); // Oranye peringatan
-      case 'Selesai':
-        return Colors.green;
-      case 'Dibatalkan':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
+    // Normalisasi string status agar tidak sensitif huruf besar-kecil
+    final normalized = status.trim().toLowerCase();
+    if (normalized.contains('mendatang')) return TBCareTheme.primary;
+    if (normalized.contains('konfirmasi')) return const Color(0xFFF57F17);
+    if (normalized.contains('selesai')) return Colors.green;
+    if (normalized.contains('batal')) return Colors.red;
+    return Colors.grey;
   }
 
   @override
@@ -262,7 +263,6 @@ class _JadwalCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Garis vertikal dekorasi indikator status di sisi paling kiri card
               Container(width: 5, color: statusColor),
               Expanded(
                 child: Padding(
@@ -273,7 +273,6 @@ class _JadwalCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Badge indikator status peninjauan jadwal
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -295,7 +294,6 @@ class _JadwalCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // Waktu Jam Pelaksanaan
                           Row(
                             children: [
                               const Icon(
@@ -305,7 +303,7 @@ class _JadwalCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '${item.jam} WIB',
+                                '${_getJamMenit(item.tanggalJam)} WIB',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
@@ -317,9 +315,8 @@ class _JadwalCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      // Tanggal Agenda Konsultasi
                       Text(
-                        _formatTanggalLokal(item.tanggal),
+                        _getTanggalLokal(item.tanggalJam),
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
@@ -327,9 +324,8 @@ class _JadwalCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      // Deskripsi/Keterangan Keperluan Janji Temu
                       Text(
-                        item.keterangan,
+                        item.tipeKonsul,
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.grey.shade600,
