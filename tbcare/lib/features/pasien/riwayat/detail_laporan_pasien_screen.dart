@@ -31,7 +31,7 @@ class _DetailLaporanPasienScreenState extends State<DetailLaporanPasienScreen> {
     _loadReportDetail();
   }
 
-  Future<void> _loadReportDetail() async {
+Future<void> _loadReportDetail() async {
     setState(() => _isLoading = true);
 
     try {
@@ -46,7 +46,7 @@ class _DetailLaporanPasienScreenState extends State<DetailLaporanPasienScreen> {
         'patient_reports',
         where: 'patientId = ? AND tanggal = ?',
         whereArgs: [patientId, widget.tanggal],
-        orderBy: 'id ASC',
+        orderBy: 'id ASC', // Data lama ke baru
       );
 
       if (reports.isEmpty) {
@@ -71,137 +71,117 @@ class _DetailLaporanPasienScreenState extends State<DetailLaporanPasienScreen> {
           .where((name) => name.isNotEmpty)
           .toSet();
 
-      // Aggregate taken meds and find the patient's main submission row (the daily full report)
+      // Menggunakan Set untuk mencegah duplikasi item obat dan gejala dari baris yang triple
       final Set<String> takenMeds = {};
+      final Set<String> uniqueGejala = {};
       bool semuaDiminum = false;
-      Map<String, dynamic>? mainRow;
+      String lastValidCatatan = '';
+      String lastValidJamObat = '-';
 
       for (final row in reports) {
+        // 1. Ambil jam obat terbaru (paling update)
         final jamObat = row['jam_obat']?.toString() ?? '';
-        if (_jamObat == '-' && jamObat.isNotEmpty) {
-          _jamObat = jamObat;
+        if (jamObat.isNotEmpty && !jamObat.toLowerCase().contains('terlewat')) {
+          lastValidJamObat = jamObat;
         }
 
+        // 2. Ambil catatan paling terbaru (paling bawah/terakhir diinput)
         final catatan = row['catatan']?.toString().trim() ?? '';
-        final catatanLower = catatan.toLowerCase();
+        if (catatan.isNotEmpty) {
+          lastValidCatatan = catatan;
+        }
 
+        // 3. Ekstrak daftar obat yang diminum dari kolom obat_list
         final obatListRaw = row['obat_list']?.toString();
-        bool rowSemuaDiminum = false;
         if (obatListRaw != null && obatListRaw.isNotEmpty) {
           try {
             final decoded = jsonDecode(obatListRaw);
             if (decoded is Map<String, dynamic>) {
               if (decoded['semua_diminum'] == true) {
                 semuaDiminum = true;
-                rowSemuaDiminum = true;
               }
             } else if (decoded is List) {
               for (final item in decoded) {
                 if (item is String && item.isNotEmpty) {
-                  takenMeds.add(item);
-                } else if (item is Map<String, dynamic> &&
-                    item['nama'] != null) {
-                  takenMeds.add(item['nama'].toString());
+                  takenMeds.add(item.trim());
+                } else if (item is Map<String, dynamic> && item['nama'] != null) {
+                  takenMeds.add(item['nama'].toString().trim());
                 }
               }
             }
           } catch (_) {}
         }
 
-        // Determine main submission row by heuristics
-        if (mainRow == null) {
-          if (jamObat.toLowerCase().contains('laporan jam') ||
-              catatanLower.contains('mood:') ||
-              rowSemuaDiminum) {
-            mainRow = row;
-          }
-        }
-
-        // Also consider catatan that equals medicine name as a taken med log
+        // Jika catatan berisi nama obat, masukkan ke daftar obat yang diminum
         if (scheduleNames.isNotEmpty &&
             catatan.isNotEmpty &&
-            scheduleNames.contains(catatanLower) &&
+            scheduleNames.contains(catatan.toLowerCase()) &&
             !jamObat.toLowerCase().contains('terlewat')) {
           takenMeds.add(catatan);
         }
-      }
 
-      // Populate gejala and catatan only from the main submission row (unique per report)
-      if (mainRow != null) {
-        // Prefer gejala from first submission (earliest row with non-empty gejala_list)
-        Map<String, dynamic>? firstGejalaRow;
-        for (final row in reports) {
-          final gejalaRaw = row['gejala_list']?.toString() ?? '';
-          if (gejalaRaw.isNotEmpty && gejalaRaw != '[]') {
-            firstGejalaRow = row;
-            break;
-          }
-        }
-
-        final gejalaRaw = (firstGejalaRow ?? mainRow)['gejala_list']
-            ?.toString();
+        // 4. Ekstrak dan gabungkan semua gejala dari baris yang triple (tanpa duplikat)
+        final gejalaRaw = row['gejala_list']?.toString();
         if (gejalaRaw != null && gejalaRaw.isNotEmpty) {
           try {
             final decoded = jsonDecode(gejalaRaw);
             if (decoded is List) {
-              _gejalaList = decoded.whereType<String>().toList();
+              for (final gejala in decoded) {
+                if (gejala is String && gejala.isNotEmpty) {
+                  uniqueGejala.add(gejala.trim());
+                }
+              }
             }
-          } catch (_) {
-            _gejalaList = [];
-          }
-        } else {
-          _gejalaList = [];
+          } catch (_) {}
         }
+      }
 
-        final rawCat = mainRow['catatan']?.toString().trim() ?? '';
-        _catatanPasien = rawCat;
+      // Memindahkan hasil akhir data yang sudah bersih dari duplikasi ke State
+      _jamObat = lastValidJamObat;
+      _catatanPasien = lastValidCatatan;
+      _gejalaList = uniqueGejala.toList();
+      _obatDiminum = takenMeds.toList();
+
+      // Deteksi mood indeks dari catatan terakhir
+      _moodIndex = -1;
+      if (_catatanPasien.isNotEmpty) {
         final moodMatch = RegExp(
           r'Mood[:\s]*([0-9])',
           caseSensitive: false,
-        ).firstMatch(rawCat);
+        ).firstMatch(_catatanPasien);
         if (moodMatch != null) {
           _moodIndex = int.tryParse(moodMatch.group(1) ?? '') ?? -1;
         } else {
           final kpMatch = RegExp(
             r'Kondisi Perasaan[:\s]*([0-9])',
             caseSensitive: false,
-          ).firstMatch(rawCat);
+          ).firstMatch(_catatanPasien);
           if (kpMatch != null) {
             _moodIndex = int.tryParse(kpMatch.group(1) ?? '') ?? -1;
           }
         }
-      } else {
-        _gejalaList = [];
-        _catatanPasien = '';
-        _moodIndex = -1;
       }
 
-      _obatDiminum = takenMeds.toList();
-
+      // Hitung persentase kepatuhan berdasarkan obat unik yang berhasil dikumpulkan
       if (scheduleNames.isEmpty) {
         _persentaseKepatuhan = semuaDiminum ? 1.0 : 0.0;
       } else if (semuaDiminum) {
         _persentaseKepatuhan = 1.0;
       } else {
-        _persentaseKepatuhan = (takenMeds.length / scheduleNames.length).clamp(
-          0.0,
-          1.0,
-        );
+        _persentaseKepatuhan = (takenMeds.length / scheduleNames.length).clamp(0.0, 1.0);
       }
 
+      // Tentukan status akhir tampilan obat
       if (_persentaseKepatuhan >= 1.0) {
         _statusObat = 'Semua obat diminum';
-      } else if (reports.any(
-        (row) =>
-            row['jam_obat']?.toString().toLowerCase().contains('terlewat') ==
-            true,
-      )) {
+      } else if (reports.any((row) => row['jam_obat']?.toString().toLowerCase().contains('terlewat') == true)) {
         _statusObat = 'Ada obat terlewat';
       } else if (_obatDiminum.isNotEmpty) {
         _statusObat = 'Beberapa obat sudah dicatat';
       } else {
         _statusObat = 'Belum minum';
       }
+
     } catch (e) {
       debugPrint('Gagal memuat detail laporan pasien: $e');
     } finally {
