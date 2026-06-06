@@ -56,7 +56,7 @@ class _ObatChecklistState extends State<ObatChecklist> {
 
       // 1. Ambil daftar resep/jadwal obat master untuk pasien ini
       final List<Map<String, dynamic>> masterObat = await db.query(
-        'patient_medications',
+        'schedules',
         where: 'patientId = ?',
         whereArgs: [_patientId],
       );
@@ -74,21 +74,22 @@ class _ObatChecklistState extends State<ObatChecklist> {
       if (masterObat.isNotEmpty) {
         for (final row in masterObat) {
           final String obatId = row['id'].toString();
+          final String namaObat = row['medicineName'] ?? 'Nama Obat';
 
           // Periksa apakah obat ini sudah ditandai selesai/diminum hari ini
           final bool isSelesai = logsHariIni.any(
             (log) =>
-                log['medicationId'].toString() == obatId &&
+                log['catatan'].toString() == namaObat &&
                 !log['jam_obat'].toString().contains('Terlewat'),
           );
 
           loadedObat.add(
             ObatItem(
               id: obatId,
-              nama: row['nama'] ?? 'Nama Obat',
-              dosis: row['dosis'] ?? '1 Tablet',
-              aturan: row['aturan'] ?? 'Sesudah Makan',
-              jam: row['jam'] ?? '08:00',
+              nama: namaObat,
+              dosis: row['dosage'] ?? '1 Tablet',
+              aturan: row['instruction'] ?? 'Sesudah Makan',
+              jam: row['time'] ?? '08:00',
               selesai: isSelesai,
             ),
           );
@@ -134,13 +135,33 @@ class _ObatChecklistState extends State<ObatChecklist> {
       final String jamSekarangStr = TimeOfDay.now().format(context);
 
       // Simpan log ke tabel report harian sebagai bukti kepatuhan
-      await db.insert('patient_reports', {
-        'patientId': _patientId,
-        'medicationId': obat.id,
-        'tanggal': hariIniStr,
-        'jam_obat': 'Diminum jam $jamSekarangStr',
-        'status': 'Tepat Waktu',
-      });
+      final existingLog = await db.query(
+        'patient_reports',
+        where: 'patientId = ? AND tanggal = ? AND catatan = ?',
+        whereArgs: [_patientId, hariIniStr, obat.nama],
+      );
+
+      if (existingLog.isEmpty) {
+        await db.insert('patient_reports', {
+          'patientId': _patientId,
+          'tanggal': hariIniStr,
+          'jam_obat': 'Diminum jam $jamSekarangStr',
+          'catatan': obat.nama,
+          'obat_list': '[]',
+          'gejala_list': '[]',
+          'bulan_tahun': _formatBulanTahun(DateTime.now()),
+        });
+      } else {
+        await db.update(
+          'patient_reports',
+          {
+            'jam_obat': 'Diminum jam $jamSekarangStr',
+            'bulan_tahun': _formatBulanTahun(DateTime.now()),
+          },
+          where: 'id = ?',
+          whereArgs: [existingLog.first['id']],
+        );
+      }
 
       setState(() {
         obat.selesai = true;
@@ -161,6 +182,25 @@ class _ObatChecklistState extends State<ObatChecklist> {
     } catch (e) {
       debugPrint('Gagal menyimpan log minum obat: $e');
     }
+  }
+
+  String _formatBulanTahun(DateTime date) {
+    const monthNames = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+    final month = monthNames[date.month - 1];
+    return '$month ${date.year}';
   }
 
   @override

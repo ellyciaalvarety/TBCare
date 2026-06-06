@@ -70,24 +70,47 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       // 5. Simpan sesi login ke SharedPreferences berdasarkan data dari SQLite
-      final prefs = await SharedPreferences.getInstance(); //
-      await prefs.setString('token', 'dummy_token_for_id_${userData['id']}'); //
-      await prefs.setString('role', userData['role'] ?? 'pasien'); //
-      await prefs.setString('name', userData['name'] ?? ''); //
-
-      // ===== PERBAIKAN: MENYIMPAN EMAIL AGAR PROFIL TIDAK NULL / GAGAL MEMUAT =====
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('token', 'dummy_token_for_id_${userData['id']}');
+      final String role = userData['role'] ?? 'pasien';
+      await prefs.setString('role', role);
+      await prefs.setString('name', userData['name'] ?? '');
       await prefs.setString('email', userData['email'] ?? cleanEmailInput);
-      // ============================================================================
+
+      // 6. Simpan ID record pasien atau dokter agar halaman masing-masing dapat memuat data spesifik
+      if (role == 'pasien') {
+        final List<Map<String, dynamic>> patientRows = await db.query(
+          'patients',
+          where: 'userId = ?',
+          whereArgs: [userData['id']],
+          limit: 1,
+        );
+        if (patientRows.isNotEmpty) {
+          await prefs.setString(
+            'patient_id',
+            patientRows.first['id'].toString(),
+          );
+        }
+      } else if (role == 'dokter') {
+        final List<Map<String, dynamic>> doctorRows = await db.query(
+          'doctors',
+          where: 'userId = ?',
+          whereArgs: [userData['id']],
+          limit: 1,
+        );
+        if (doctorRows.isNotEmpty) {
+          await prefs.setString('doctor_id', doctorRows.first['id'].toString());
+        }
+      }
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
       // 6. Arahkan halaman sesuai dengan role user dari database
-      final role = userData['role']; //
       if (role == 'pasien') {
-        context.go(Routes.pasienHome); //
+        context.go(Routes.pasienHome);
       } else {
-        context.go(Routes.patients); //
+        context.go(Routes.patients);
       }
     } catch (e) {
       if (!mounted) return;

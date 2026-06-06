@@ -34,6 +34,7 @@ dependencies:
   flutter_bloc: ^8.1.4
   equatable: ^2.0.5
   sqflite: ^2.3.4
+  sqflite_common_ffi: ^2.4.0
 
   # Navigation
   go_router: ^13.0.0

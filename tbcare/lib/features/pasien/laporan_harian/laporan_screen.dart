@@ -28,7 +28,7 @@ class _LaporanScreenState extends State<LaporanScreen> {
   // Catatan teks tambahan
   String _catatan = '';
 
-  // Mood / perasaan: 0=buruk, 1=biasa, 2=baik, 3=sangat baik
+  // Mood / perasaan: 0=Buruk, 1=Kurang, 2=Biasa, 3=Baik, 4=Sangat Baik
   int _moodIndex = -1;
 
   bool _isLoading = false;
@@ -289,19 +289,25 @@ class _LaporanScreenState extends State<LaporanScreen> {
                     ),
                     _buildMoodItem(
                       1,
-                      Icons.sentiment_neutral_rounded,
-                      'Biasa',
+                      Icons.sentiment_dissatisfied_rounded,
+                      'Kurang',
                       Colors.orange,
                     ),
                     _buildMoodItem(
                       2,
-                      Icons.sentiment_satisfied_rounded,
-                      'Baik',
+                      Icons.sentiment_neutral_rounded,
+                      'Biasa',
                       Colors.blue,
                     ),
                     _buildMoodItem(
                       3,
-                      Icons.sentiment_very_satisfied_rounded,
+                      Icons.sentiment_satisfied_rounded,
+                      'Baik',
+                      Colors.green,
+                    ),
+                    _buildMoodItem(
+                      4,
+                      Icons.emoji_emotions_rounded,
                       'Sangat Baik',
                       TBCareTheme.primary,
                     ),

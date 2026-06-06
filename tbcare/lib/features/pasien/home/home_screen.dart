@@ -1,5 +1,6 @@
 //features/pasien/home/home_screen.dart
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -47,24 +48,82 @@ class _HomeScreenState extends State<HomeScreen> {
         _namaUser = currentPatient['nama'] ?? 'Pasien TBCare';
         _totalHari = currentPatient['total_hari_program'] ?? 90;
 
-        // Hitung riwayat kepatuhan dari log harian
+        // Hitung riwayat kepatuhan berdasarkan tanggal unik
         final List<Map<String, dynamic>> reports = await db.query(
           'patient_reports',
           where: 'patientId = ?',
           whereArgs: [patientId],
         );
 
-        if (reports.isNotEmpty) {
-          _hariKe = reports.length;
-          final missedCount = reports
-              .where((r) => r['jam_obat'].toString().contains('Terlewat'))
-              .length;
-          _persenKepatuhan = ((reports.length - missedCount) / reports.length)
-              .clamp(0.0, 1.0);
+        final distinctDates = reports
+            .map((row) => row['tanggal']?.toString().trim() ?? '')
+            .where((value) => value.isNotEmpty)
+            .toSet();
+
+        _hariKe = distinctDates.isEmpty ? 1 : distinctDates.length;
+
+        final todayStr = DateTime.now().toIso8601String().split('T')[0];
+        final todayReports = reports
+            .where((row) => row['tanggal']?.toString() == todayStr)
+            .toList();
+
+        final List<Map<String, dynamic>> scheduleRows = await db.query(
+          'schedules',
+          where: 'patientId = ?',
+          whereArgs: [patientId],
+        );
+
+        final Set<String> scheduleNames = scheduleRows
+            .map(
+              (row) =>
+                  row['medicineName']?.toString().toLowerCase().trim() ?? '',
+            )
+            .where((name) => name.isNotEmpty)
+            .toSet();
+
+        double todayPercent = 0.0;
+        final int scheduleCount = scheduleNames.length;
+
+        if (scheduleCount > 0) {
+          final Set<String> takenMedNames = {};
+          bool isSemuaObatDiminum = false;
+
+          for (final row in todayReports) {
+            final catatan = row['catatan']?.toString().trim() ?? '';
+            final jamObat = row['jam_obat']?.toString().toLowerCase() ?? '';
+
+            if (jamObat.contains('terlewat')) continue;
+
+            if (catatan.isNotEmpty &&
+                scheduleNames.contains(catatan.toLowerCase())) {
+              takenMedNames.add(catatan.toLowerCase());
+            }
+
+            final obatListRaw = row['obat_list']?.toString();
+            if (obatListRaw != null && obatListRaw.isNotEmpty) {
+              try {
+                final decoded = jsonDecode(obatListRaw);
+                if (decoded is Map<String, dynamic> &&
+                    decoded['semua_diminum'] == true) {
+                  isSemuaObatDiminum = true;
+                }
+              } catch (_) {}
+            }
+          }
+
+          if (isSemuaObatDiminum) {
+            todayPercent = 1.0;
+          } else {
+            todayPercent = (takenMedNames.length / scheduleCount).clamp(
+              0.0,
+              1.0,
+            );
+          }
         } else {
-          _hariKe = 1;
-          _persenKepatuhan = 1.0;
+          todayPercent = 0.0;
         }
+
+        _persenKepatuhan = todayPercent;
       }
     } catch (e) {
       debugPrint('Gagal mengambil ringkasan database: $e');

@@ -25,7 +25,7 @@ class JadwalPasienItem {
   factory JadwalPasienItem.fromMap(Map<String, dynamic> map) {
     return JadwalPasienItem(
       id: map['id']?.toString() ?? '',
-      tanggalJam: map['time']?.toString() ?? '', 
+      tanggalJam: map['time']?.toString() ?? '',
       status: map['room']?.toString() ?? 'Menunggu Konfirmasi',
       tipeKonsul: map['type']?.toString() ?? 'Konsultasi Rutin TBC',
       isCompleted: map['isCompleted'] is int ? map['isCompleted'] : 0,
@@ -40,7 +40,8 @@ class JadwalScreen extends StatefulWidget {
   State<JadwalScreen> createState() => _JadwalScreenState();
 }
 
-class _JadwalScreenState extends State<JadwalScreen> with SingleTickerProviderStateMixin {
+class _JadwalScreenState extends State<JadwalScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<JadwalPasienItem> _allJadwal = [];
   bool _isLoading = true;
@@ -69,7 +70,7 @@ class _JadwalScreenState extends State<JadwalScreen> with SingleTickerProviderSt
     if (!silentReload) {
       setState(() => _isLoading = true);
     }
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final String? email = prefs.getString('email');
@@ -105,7 +106,9 @@ class _JadwalScreenState extends State<JadwalScreen> with SingleTickerProviderSt
 
             if (mounted) {
               setState(() {
-                _allJadwal = maps.map((item) => JadwalPasienItem.fromMap(item)).toList();
+                _allJadwal = maps
+                    .map((item) => JadwalPasienItem.fromMap(item))
+                    .toList();
               });
             }
           }
@@ -132,7 +135,11 @@ class _JadwalScreenState extends State<JadwalScreen> with SingleTickerProviderSt
         elevation: 0,
         title: const Text(
           'Jadwal Konsultasi',
-          style: TextStyle(color: TBCareTheme.primary, fontWeight: FontWeight.w700, fontSize: 20),
+          style: TextStyle(
+            color: TBCareTheme.primary,
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+          ),
         ),
         bottom: TabBar(
           controller: _tabController,
@@ -140,11 +147,16 @@ class _JadwalScreenState extends State<JadwalScreen> with SingleTickerProviderSt
           unselectedLabelColor: Colors.grey,
           indicatorColor: TBCareTheme.primary,
           indicatorSize: TabBarIndicatorSize.tab,
-          tabs: const [Tab(text: 'Jadwal Aktif'), Tab(text: 'Riwayat')],
+          tabs: const [
+            Tab(text: 'Jadwal Aktif'),
+            Tab(text: 'Riwayat'),
+          ],
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: TBCareTheme.primary))
+          ? const Center(
+              child: CircularProgressIndicator(color: TBCareTheme.primary),
+            )
           : TabBarView(
               controller: _tabController,
               children: [
@@ -156,21 +168,35 @@ class _JadwalScreenState extends State<JadwalScreen> with SingleTickerProviderSt
         onPressed: () => context.go(Routes.ajukanJadwal),
         backgroundColor: TBCareTheme.primary,
         icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: const Text('Ajukan Jadwal', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        label: const Text(
+          'Ajukan Jadwal',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
 
-  Widget _buildJadwalList(List<JadwalPasienItem> list, {required bool isAktifTab}) {
+  Widget _buildJadwalList(
+    List<JadwalPasienItem> list, {
+    required bool isAktifTab,
+  }) {
     if (list.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(isAktifTab ? Icons.calendar_today_outlined : Icons.history_rounded, size: 56, color: Colors.grey.shade400),
+            Icon(
+              isAktifTab
+                  ? Icons.calendar_today_outlined
+                  : Icons.history_rounded,
+              size: 56,
+              color: Colors.grey.shade400,
+            ),
             const SizedBox(height: 12),
             Text(
-              isAktifTab ? 'Tidak ada jadwal konsultasi aktif' : 'Belum ada riwayat konsultasi',
+              isAktifTab
+                  ? 'Tidak ada jadwal konsultasi aktif'
+                  : 'Belum ada riwayat konsultasi',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
             ),
           ],
@@ -198,8 +224,18 @@ class _JadwalCard extends StatelessWidget {
       final String datePart = rawDateTime.split(' ')[0];
       final parsed = DateTime.parse(datePart);
       final months = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember',
       ];
       return '${parsed.day} ${months[parsed.month - 1]} ${parsed.year}';
     } catch (_) {
@@ -217,10 +253,12 @@ class _JadwalCard extends StatelessWidget {
 
   Color _getStatusColor(String status) {
     final normalized = status.trim().toLowerCase();
-    if (normalized.contains('mendatang')) return TBCareTheme.primary;
-    if (normalized.contains('konfirmasi')) return const Color(0xFFF57F17);
+    if (normalized.contains('menunggu konfirmasi'))
+      return const Color(0xFFF57F17);
+    if (normalized.contains('dikonfirmasi')) return Colors.green;
+    if (normalized.contains('ditolak') || normalized.contains('batal'))
+      return Colors.red;
     if (normalized.contains('selesai')) return Colors.green;
-    if (normalized.contains('batal')) return Colors.red;
     return Colors.grey;
   }
 
@@ -241,14 +279,16 @@ class _JadwalCard extends StatelessWidget {
         child: InkWell(
           onTap: () {
             // Hanya izinkan reschedule jika jadwal tersebut belum selesai / dicancel admin
-            if (item.isCompleted == 0 && !item.status.toLowerCase().contains('batal')) {
-              // Navigasi ke halaman reschedule dengan menyertakan ID janji temu melalui rute GoRouter Anda
-              // Sesuai dengan setup GoRouter Anda, pastikan jalurnya menerima id (misal: '${Routes.reschedule}?id=${item.id}')
-              context.go('/pasien/jadwal/reschedule?id=${item.id}'); 
+            if (item.isCompleted == 0 &&
+                item.status.toLowerCase().contains('konfirmasi')) {
+              // Hanya izinkan reschedule ketika status masih menunggu konfirmasi pasien
+              context.go('/pasien/jadwal/reschedule?id=${item.id}');
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Jadwal yang telah selesai atau dibatalkan tidak dapat diubah.'),
+                  content: Text(
+                    'Jadwal yang telah selesai atau dibatalkan tidak dapat diubah.',
+                  ),
                   behavior: SnackBarBehavior.floating,
                 ),
               );
@@ -269,30 +309,63 @@ class _JadwalCard extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: statusColor.withOpacity(0.08),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: statusColor.withOpacity(0.2)),
+                                border: Border.all(
+                                  color: statusColor.withOpacity(0.2),
+                                ),
                               ),
                               child: Text(
-                                item.status, 
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)
+                                item.status,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: statusColor,
+                                ),
                               ),
                             ),
                             Row(
                               children: [
-                                const Icon(Icons.access_time_rounded, size: 14, color: Colors.grey),
+                                const Icon(
+                                  Icons.access_time_rounded,
+                                  size: 14,
+                                  color: Colors.grey,
+                                ),
                                 const SizedBox(width: 4),
-                                Text('${_getJamMenit(item.tanggalJam)} WIB', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF555555))),
+                                Text(
+                                  '${_getJamMenit(item.tanggalJam)} WIB',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF555555),
+                                  ),
+                                ),
                               ],
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Text(_getTanggalLokal(item.tanggalJam), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A))),
+                        Text(
+                          _getTanggalLokal(item.tanggalJam),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text(item.tipeKonsul, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                        Text(
+                          item.tipeKonsul,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
                       ],
                     ),
                   ),

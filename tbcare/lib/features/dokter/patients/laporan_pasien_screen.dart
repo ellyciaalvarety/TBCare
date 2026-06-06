@@ -34,8 +34,7 @@ class _LaporanPasienScreenState extends State<LaporanPasienScreen> {
         'patient_reports',
         where: 'patientId = ?',
         whereArgs: [widget.patientId],
-        orderBy:
-            'id DESC', // Menggunakan ID auto-increment untuk urutan input terbaru
+        orderBy: 'tanggal DESC, id DESC',
       );
 
       setState(() {
@@ -51,15 +50,30 @@ class _LaporanPasienScreenState extends State<LaporanPasienScreen> {
   // Helper untuk menentukan nama hari fungsional/lokal (Opsional)
   String _determineHariLabel(String tanggalStr) {
     try {
-      final hariIni = DateTime.now().day.toString();
-      if (tanggalStr == hariIni) return 'Hari Ini';
-
-      // Jika Anda menyimpan data DateTime lengkap di database,
-      // Anda bisa memformatnya menjadi nama hari asli (Senin, Selasa, dll.)
-      return 'Laporan Harian';
+      final parsed = DateTime.parse(tanggalStr);
+      final now = DateTime.now();
+      if (parsed.year == now.year &&
+          parsed.month == now.month &&
+          parsed.day == now.day) {
+        return 'Hari Ini';
+      }
+      return _weekdayLabel(parsed.weekday);
     } catch (_) {
-      return 'Laporan';
+      return 'Laporan Harian';
     }
+  }
+
+  String _weekdayLabel(int weekday) {
+    const days = [
+      'Minggu',
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu',
+    ];
+    return days[(weekday - 1) % 7];
   }
 
   @override
@@ -109,28 +123,36 @@ class _LaporanPasienScreenState extends State<LaporanPasienScreen> {
                 final laporan = _riwayatLaporan[index];
 
                 // Ekstraksi data dari kolom SQLite
-                final String tgl = laporan['tanggal'] ?? '01';
+                final String rawTanggal = laporan['tanggal']?.toString() ?? '';
+                final DateTime parsedTanggal =
+                    DateTime.tryParse(rawTanggal) ?? DateTime.now();
+                final String tanggalDisplay = parsedTanggal.day
+                    .toString()
+                    .padLeft(2, '0');
                 final String bln = (laporan['bulan_tahun'] ?? 'MEI')
                     .split(' ')[0]
                     .toUpperCase();
-                final String labelHari = _determineHariLabel(tgl);
+                final String labelHari = _determineHariLabel(rawTanggal);
 
-                // Cek status kepatuhan dari catatan obat (misal jika ada obat terlewat)
-                // Anda bisa menyesuaikan logika penentuan teks status ini sesuai kebutuhan
-                final bool isOk = !laporan['jam_obat'].toString().contains(
-                  'Terlewat',
-                );
+                final bool isOk = !laporan['jam_obat']
+                    .toString()
+                    .toLowerCase()
+                    .contains('terlewat');
                 final String keterangan = isOk
                     ? 'Obat Diminum'
                     : 'Dosis Terlewat';
 
+                final String catatanPreview =
+                    laporan['catatan']?.toString() ?? '';
                 return _buildRiwayatCard(
                   context: context,
-                  tanggal: tgl,
+                  tanggal: tanggalDisplay,
+                  tanggalFull: rawTanggal,
                   bulan: bln,
                   hari: labelHari,
                   isOk: isOk,
                   keterangan: keterangan,
+                  catatanPreview: catatanPreview,
                 );
               },
             ),
@@ -140,15 +162,18 @@ class _LaporanPasienScreenState extends State<LaporanPasienScreen> {
   Widget _buildRiwayatCard({
     required BuildContext context,
     required String tanggal,
+    required String tanggalFull,
     required String bulan,
     required String hari,
     required bool isOk,
     required String keterangan,
+    String catatanPreview = '',
   }) {
     return GestureDetector(
       // Navigasi dinamis menuju halaman detail laporan berdasarkan tanggal riwayat yang diklik
-      onTap: () =>
-          context.go('/medis/patients/${widget.patientId}/riwayat/$tanggal'),
+      onTap: () => context.go(
+        '/medis/patients/${widget.patientId}/riwayat/$tanggalFull',
+      ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(14),
@@ -156,10 +181,10 @@ class _LaporanPasienScreenState extends State<LaporanPasienScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+            const BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.02),
               blurRadius: 6,
-              offset: const Offset(0, 2),
+              offset: Offset(0, 2),
             ),
           ],
         ),
@@ -236,6 +261,19 @@ class _LaporanPasienScreenState extends State<LaporanPasienScreen> {
                       ),
                     ],
                   ),
+                  if (catatanPreview.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      // show a short preview so list stays tidy
+                      catatanPreview.length > 80
+                          ? '${catatanPreview.substring(0, 80)}...'
+                          : catatanPreview,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF6B6B6B),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

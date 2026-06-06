@@ -47,14 +47,23 @@ class JadwalScreen extends StatefulWidget {
   State<JadwalScreen> createState() => _JadwalScreenState();
 }
 
-class _JadwalScreenState extends State<JadwalScreen> {
+class _JadwalScreenState extends State<JadwalScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   List<Appointment> _appointments = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadAppointments();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   // Fungsi untuk mengambil data dari SQLite
@@ -124,49 +133,154 @@ class _JadwalScreenState extends State<JadwalScreen> {
     }
   }
 
+  Future<void> _confirmAppointment(String id) async {
+    try {
+      final db = await DatabaseHelper().database;
+
+      await db.update(
+        'appointments',
+        {'room': 'Dikonfirmasi oleh Nakes'},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+      await _loadAppointments();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Jadwal berhasil dikonfirmasi'),
+          backgroundColor: TBCareTheme.primary,
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengonfirmasi jadwal: $e'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _rejectAppointment(String id) async {
+    try {
+      final db = await DatabaseHelper().database;
+
+      await db.update(
+        'appointments',
+        {'room': 'Ditolak oleh Nakes', 'isCompleted': 1},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+      await _loadAppointments();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Jadwal berhasil ditolak'),
+          backgroundColor: Colors.redAccent,
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal menolak jadwal: $e'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final activeAppointments = _appointments
+        .where((a) => a.isCompleted == false)
+        .toList();
+    final historyAppointments = _appointments
+        .where((a) => a.isCompleted == true)
+        .toList();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F7),
-      appBar: const TBCareAppBar(),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-            child: Text(
-              'Jadwal Hari Ini',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: const Text(
+          'Jadwal Konsultasi',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
           ),
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: TBCareTheme.primary,
-                    ),
-                  )
-                : _appointments.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Tidak ada jadwal konsultasi hari ini.',
-                      style: TextStyle(color: Colors.grey, fontSize: 16),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: _appointments.length,
-                    itemBuilder: (_, i) =>
-                        _buildAppointmentCard(_appointments[i]),
-                  ),
-          ),
-        ],
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: TBCareTheme.primary,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: TBCareTheme.primary,
+          tabs: const [
+            Tab(text: 'Aktif'),
+            Tab(text: 'Riwayat'),
+          ],
+        ),
       ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: TBCareTheme.primary),
+            )
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                activeAppointments.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Tidak ada jadwal aktif saat ini.',
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        itemCount: activeAppointments.length,
+                        itemBuilder: (_, i) =>
+                            _buildAppointmentCard(activeAppointments[i]),
+                      ),
+                historyAppointments.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Belum ada jadwal riwayat.',
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        itemCount: historyAppointments.length,
+                        itemBuilder: (_, i) =>
+                            _buildAppointmentCard(historyAppointments[i]),
+                      ),
+              ],
+            ),
     );
+  }
+
+  Color _getStatusColor(String status) {
+    final normalized = status.trim().toLowerCase();
+    if (normalized.contains('menunggu konfirmasi'))
+      return const Color(0xFFF57F17);
+    if (normalized.contains('dikonfirmasi')) return Colors.green;
+    if (normalized.contains('ditolak') || normalized.contains('batal'))
+      return Colors.red;
+    if (normalized.contains('selesai')) return Colors.green;
+    return Colors.grey.shade700;
   }
 
   Widget _buildAppointmentCard(Appointment appointment) {
@@ -261,31 +375,84 @@ class _JadwalScreenState extends State<JadwalScreen> {
               const SizedBox(width: 8),
               Text(
                 appointment.room,
-                style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: _getStatusColor(appointment.room),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 22),
           if (!appointment.isCompleted)
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => _markAsCompleted(appointment.id),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: TBCareTheme.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: const Text(
-                  'Selesai',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-              ),
-            )
+            appointment.room.toLowerCase().contains('menunggu konfirmasi')
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _confirmAppointment(appointment.id),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1A9E8F),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'Konfirmasi',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _rejectAppointment(appointment.id),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.redAccent,
+                            side: const BorderSide(color: Colors.redAccent),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'Tolak',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _markAsCompleted(appointment.id),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: TBCareTheme.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text(
+                        'Selesai',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  )
           else
             Container(
               width: double.infinity,

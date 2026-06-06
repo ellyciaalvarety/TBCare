@@ -22,11 +22,14 @@ class DetailLaporanScreen extends StatefulWidget {
 
 class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
   bool _isLoading = true;
-  Map<String, dynamic>? _reportData;
+  bool _hasReport = false;
+  double _persentaseKepatuhan = 0.0;
 
-  List<dynamic> _obatList = [];
-  List<dynamic> _gejalaList = [];
+  List<String> _obatDiminum = [];
+  List<String> _gejalaList = [];
+  int _moodIndex = -1;
   String _jamObat = 'Belum ada jadwal';
+  String _statusObat = 'Belum ada data obat';
   String _catatanPasien = '';
   String _bulanTahun = 'Mei 2026';
 
@@ -36,6 +39,21 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
     _loadReportDetails();
   }
 
+  String _moodLabel(int idx) {
+    switch (idx) {
+      case 0:
+        return 'Buruk';
+      case 1:
+        return 'Kurang';
+      case 2:
+        return 'Biasa';
+      case 3:
+        return 'Baik';
+      default:
+        return '-';
+    }
+  }
+
   // Fungsi untuk memuat detail laporan harian dari SQLite
   Future<void> _loadReportDetails() async {
     setState(() => _isLoading = true);
@@ -43,28 +61,163 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
       final db = await DatabaseHelper().database;
 
       // Ambil laporan berdasarkan id pasien dan kesamaan tanggal laporan
+      // Order by id ASC untuk ensure konsistensi urutan (row pertama = first submission)
       final List<Map<String, dynamic>> results = await db.query(
         'patient_reports',
         where: 'patientId = ? AND tanggal = ?',
         whereArgs: [widget.patientId, widget.tanggal],
+        orderBy: 'id ASC',
       );
 
       if (results.isNotEmpty) {
-        final data = results.first;
-        setState(() {
-          _reportData = data;
-          _jamObat = data['jam_obat'] ?? 'Obat jam 18:00';
-          _bulanTahun = data['bulan_tahun'] ?? 'Mei 2026';
-          _catatanPasien = data['catatan'] ?? '';
+        final db = await DatabaseHelper().database;
+        final List<Map<String, dynamic>> scheduleRows = await db.query(
+          'schedules',
+          where: 'patientId = ?',
+          whereArgs: [widget.patientId],
+        );
 
-          // Parsing string JSON kembali menjadi objek List
-          if (data['obat_list'] != null) {
-            _obatList = jsonDecode(data['obat_list']);
+        final Set<String> scheduleNames = scheduleRows
+            .map(
+              (row) =>
+                  row['medicineName']?.toString().toLowerCase().trim() ?? '',
+            )
+            .where((name) => name.isNotEmpty)
+            .toSet();
+
+        final Set<String> takenMeds = {};
+        bool semuaDiminum = false;
+        bool adaTerlewat = false;
+        Map<String, dynamic>? mainRow;
+
+        for (final row in results) {
+          final String jamObat = row['jam_obat']?.toString() ?? '';
+          final String catatan = row['catatan']?.toString().trim() ?? '';
+          final String catatanLower = catatan.toLowerCase();
+
+          if (_jamObat == 'Belum ada jadwal' && jamObat.isNotEmpty) {
+            _jamObat = jamObat;
           }
-          if (data['gejala_list'] != null) {
-            _gejalaList = jsonDecode(data['gejala_list']);
+
+          if (jamObat.toLowerCase().contains('terlewat')) {
+            adaTerlewat = true;
           }
+
+          final obatListRaw = row['obat_list']?.toString();
+          bool rowSemuaDiminum = false;
+          if (obatListRaw != null && obatListRaw.isNotEmpty) {
+            try {
+              final decoded = jsonDecode(obatListRaw);
+              if (decoded is Map<String, dynamic>) {
+                if (decoded['semua_diminum'] == true) {
+                  semuaDiminum = true;
+                  rowSemuaDiminum = true;
+                }
+              } else if (decoded is List) {
+                for (final item in decoded) {
+                  if (item is String && item.isNotEmpty) {
+                    takenMeds.add(item);
+                  } else if (item is Map<String, dynamic> &&
+                      item['nama'] != null) {
+                    takenMeds.add(item['nama'].toString());
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
+          // determine main submission row
+          if (mainRow == null) {
+            if (jamObat.toLowerCase().contains('laporan jam') ||
+                catatanLower.contains('mood:') ||
+                rowSemuaDiminum) {
+              mainRow = row;
+            }
+          }
+
+          if (scheduleNames.isNotEmpty &&
+              catatan.isNotEmpty &&
+              scheduleNames.contains(catatanLower)) {
+            takenMeds.add(catatan);
+          }
+        }
+
+        // Determine status and calculate percent
+        if (semuaDiminum) {
+          _statusObat = 'Semua obat diminum';
+        } else if (adaTerlewat) {
+          _statusObat = 'Ada obat terlewat';
+        } else if (takenMeds.isNotEmpty) {
+          _statusObat = 'Beberapa obat sudah dicatat';
+        } else {
+          _statusObat = 'Belum minum';
+        }
+
+        final calculatedPercent = scheduleNames.isEmpty
+            ? (semuaDiminum ? 1.0 : 0.0)
+            : (semuaDiminum
+                  ? 1.0
+                  : (takenMeds.length / scheduleNames.length).clamp(0.0, 1.0));
+
+        // Populate gejala and catatan only from the main submission row
+        if (mainRow != null) {
+          // Prefer gejala from first submission (earliest row with non-empty gejala_list)
+          Map<String, dynamic>? firstGejalaRow;
+          for (final row in results) {
+            final gejalaRaw = row['gejala_list']?.toString() ?? '';
+            if (gejalaRaw.isNotEmpty && gejalaRaw != '[]') {
+              firstGejalaRow = row;
+              break;
+            }
+          }
+
+          final gejalaRaw = (firstGejalaRow ?? mainRow)['gejala_list']
+              ?.toString();
+          if (gejalaRaw != null && gejalaRaw.isNotEmpty) {
+            try {
+              final decoded = jsonDecode(gejalaRaw);
+              if (decoded is List) {
+                _gejalaList = decoded.whereType<String>().toList();
+              }
+            } catch (_) {
+              _gejalaList = [];
+            }
+          } else {
+            _gejalaList = [];
+          }
+
+          // Preserve full patient note but also parse mood if present
+          final rawCat = mainRow['catatan']?.toString().trim() ?? '';
+          _catatanPasien = rawCat;
+          // parse mood: look for '(Mood: X)' or 'Kondisi Perasaan: X'
+          final moodMatch = RegExp(
+            r'Mood[:\s]*([0-9])',
+            caseSensitive: false,
+          ).firstMatch(rawCat);
+          if (moodMatch != null) {
+            _moodIndex = int.tryParse(moodMatch.group(1) ?? '') ?? -1;
+          } else {
+            final kpMatch = RegExp(
+              r'Kondisi Perasaan[:\s]*([0-9])',
+              caseSensitive: false,
+            ).firstMatch(rawCat);
+            if (kpMatch != null) {
+              _moodIndex = int.tryParse(kpMatch.group(1) ?? '') ?? -1;
+            }
+          }
+        } else {
+          _gejalaList = [];
+          _catatanPasien = '';
+        }
+
+        setState(() {
+          _hasReport = true;
+          _obatDiminum = takenMeds.toList();
+          _persentaseKepatuhan = calculatedPercent;
+          _bulanTahun = results.first['bulan_tahun'] ?? _bulanTahun;
+          _isLoading = false;
         });
+        return;
       }
     } catch (e) {
       // Menangani error jika query gagal
@@ -104,10 +257,16 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
           ? const Center(
               child: CircularProgressIndicator(color: TBCareTheme.primary),
             )
+          : !_hasReport
+          ? const Center(
+              child: Text(
+                'Tidak ada laporan untuk tanggal ini.',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
               children: [
-                // Laporan Minum Obat
                 _SectionHeader(
                   icon: Icons.medication_rounded,
                   label: 'Laporan Minum Obat',
@@ -115,8 +274,6 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
                 const SizedBox(height: 10),
                 _buildObatCard(),
                 const SizedBox(height: 20),
-
-                // Laporan Kondisi & Gejala
                 _SectionHeader(
                   icon: Icons.assignment_outlined,
                   label: 'Laporan Kondisi & Gejala',
@@ -124,8 +281,6 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
                 const SizedBox(height: 10),
                 _buildGejalaCard(),
                 const SizedBox(height: 20),
-
-                // Catatan Pasien
                 _buildCatatanCard(),
               ],
             ),
@@ -134,7 +289,7 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
 
   // Builder widget untuk Obat Card dari data SQLite
   Widget _buildObatCard() {
-    if (_obatList.isEmpty) {
+    if (_obatDiminum.isEmpty) {
       return const _EmptyDataCard(
         message: 'Tidak ada laporan minum obat pada hari ini.',
       );
@@ -146,16 +301,56 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+          const BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.03),
             blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: Offset(0, 2),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Status Obat',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF3D3D3D),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _statusObat,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color:
+                          _statusObat.toLowerCase().contains('terlewat') ||
+                              _statusObat.toLowerCase().contains('belum')
+                          ? const Color(0xFFE53935)
+                          : const Color(0xFF1A9E8F),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '${(_persentaseKepatuhan * 100).round()}%',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: TBCareTheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               const Icon(
@@ -174,17 +369,50 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          if (_moodIndex >= 0)
+            Row(
+              children: [
+                const Icon(
+                  Icons.sentiment_satisfied_outlined,
+                  size: 16,
+                  color: Color(0xFF6B6B6B),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _moodLabel(_moodIndex),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF3D3D3D),
+                  ),
+                ),
+              ],
+            ),
           const SizedBox(height: 12),
-          ..._obatList.map((obat) {
-            return Padding(
+          ..._obatDiminum.map(
+            (obat) => Padding(
               padding: const EdgeInsets.only(bottom: 8.0),
-              child: _ObatRow(
-                nama: obat['nama'] ?? '',
-                keterangan: obat['keterangan'] ?? '',
-                isDiminum: obat['isDiminum'] == 1 || obat['isDiminum'] == true,
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.check_circle_outline,
+                    size: 18,
+                    color: TBCareTheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      obat,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF3D3D3D),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            );
-          }).toList(),
+            ),
+          ),
         ],
       ),
     );
@@ -204,21 +432,21 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+          const BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.03),
             blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: Offset(0, 2),
           ),
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: _gejalaList.map((g) {
-          // Mapping icon data dari penamaan teks string database
+          final lower = g.toLowerCase();
           IconData iconData = Icons.health_and_safety_outlined;
-          if (g['icon_name'] == 'air_rounded' || g['label'] == 'Batuk') {
+          if (lower.contains('batuk')) {
             iconData = Icons.air_rounded;
-          } else if (g['icon_name'] == 'thermostat_rounded' ||
-              g['label'] == 'Demam') {
+          } else if (lower.contains('demam') || lower.contains('suhu')) {
             iconData = Icons.thermostat_rounded;
           }
 
@@ -233,12 +461,14 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
               children: [
                 Icon(iconData, size: 18, color: TBCareTheme.primary),
                 const SizedBox(width: 12),
-                Text(
-                  g['label'] ?? '',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF3D3D3D),
+                Expanded(
+                  child: Text(
+                    g,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF3D3D3D),
+                    ),
                   ),
                 ),
               ],
@@ -257,14 +487,14 @@ class _DetailLaporanScreenState extends State<DetailLaporanScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: TBCareTheme.primary.withOpacity(0.3),
+          color: const Color.fromRGBO(29, 158, 117, 0.3),
           width: 0.8,
         ),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+          const BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.03),
             blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -331,73 +561,6 @@ class _SectionHeader extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-// ── Obat row ─────────────────────────────────────────────────────
-class _ObatRow extends StatelessWidget {
-  final String nama;
-  final String keterangan;
-  final bool isDiminum;
-
-  const _ObatRow({
-    required this.nama,
-    required this.keterangan,
-    required this.isDiminum,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: isDiminum ? const Color(0xFFF5F5F5) : const Color(0xFFFFF0F0),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.medication_rounded,
-            size: 18,
-            color: isDiminum
-                ? const Color(0xFF9E9E9E)
-                : const Color(0xFFE53935),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  nama,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-                Text(
-                  keterangan,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF9E9E9E),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            isDiminum
-                ? Icons.check_circle_outline_rounded
-                : Icons.cancel_outlined,
-            size: 20,
-            color: isDiminum
-                ? const Color(0xFF9E9E9E)
-                : const Color(0xFFE53935),
-          ),
-        ],
-      ),
     );
   }
 }

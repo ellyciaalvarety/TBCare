@@ -13,6 +13,7 @@ import 'package:tbcare/features/pasien/jadwal/jadwal_screen.dart';
 import 'package:tbcare/features/pasien/jadwal/ajukan_jadwal_screen.dart';
 import 'package:tbcare/features/pasien/jadwal/reschedule_screen.dart';
 import 'package:tbcare/features/pasien/riwayat/riwayat_screen.dart';
+import 'package:tbcare/features/pasien/riwayat/detail_laporan_pasien_screen.dart';
 import 'package:tbcare/features/pasien/profil/profil_screen.dart';
 
 import 'package:tbcare/features/dokter/patients/patients_screen.dart';
@@ -106,6 +107,15 @@ final router = GoRouter(
         GoRoute(
           path: Routes.riwayat,
           builder: (context, state) => const RiwayatScreen(),
+          routes: [
+            GoRoute(
+              path: ':tanggal',
+              builder: (context, state) {
+                final tanggal = state.pathParameters['tanggal']!;
+                return DetailLaporanPasienScreen(tanggal: tanggal);
+              },
+            ),
+          ],
         ),
         GoRoute(
           path: Routes.profilPasien,

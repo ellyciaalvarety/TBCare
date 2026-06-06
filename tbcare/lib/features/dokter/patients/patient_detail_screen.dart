@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tbcare/app/routes.dart';
 import 'package:tbcare/app/theme.dart';
-import 'package:tbcare/shared/widgets/kepatuhan_chart.dart';
-import 'package:tbcare/shared/database/database_helper.dart'; // Import DatabaseHelper Anda
+import 'package:tbcare/shared/database/database_helper.dart';
 
 class PatientDetailScreen extends StatefulWidget {
   final String patientId;
@@ -26,9 +25,6 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
   // State Jadwal Obat & Konsultasi
   List<Map<String, dynamic>> _obatList = [];
   Map<String, dynamic>? _nextAppointment;
-
-  // State List Data untuk Grafik Garis Kepatuhan (30 hari terakhir)
-  List<double> _kepatuhanDataHistory = [];
 
   @override
   void initState() {
@@ -66,33 +62,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
         }
       }
 
-      // 2. Ambil Riwayat Laporan Harian untuk diumpankan ke Grafik Garis Kepatuhan
-      // Kita mengambil data laporan dari `patient_reports` (maksimal 30 entri terakhir)
-      final List<Map<String, dynamic>> reportsQuery = await db.query(
-        'patient_reports',
-        where: 'patientId = ?',
-        whereArgs: [widget.patientId],
-        orderBy:
-            'id ASC', // Diurutkan maju agar grafik digambar dari kiri (lama) ke kanan (baru)
-        limit: 30,
-      );
-
-      if (reportsQuery.isNotEmpty) {
-        _kepatuhanDataHistory = reportsQuery.map((report) {
-          // Logika Penentuan Nilai: Jika tidak ada obat yang terlewat, beri nilai penuh (1.0)
-          // Jika ada indikasi terlewat, kita asumsikan nilainya turun (misal 0.5 atau 0.0)
-          final String jamObat = report['jam_obat']?.toString() ?? '';
-          if (jamObat.contains('Terlewat')) {
-            return 0.5;
-          }
-          return 1.0;
-        }).toList();
-      } else {
-        // Jika data di database kosong, gunakan fallback list kosong agar KepatuhanChart memakai data default internalnya
-        _kepatuhanDataHistory = [];
-      }
-
-      // 3. Ambil Daftar Jadwal Obat Pasien
+      // 2. Ambil Daftar Jadwal Obat Pasien
       _obatList = await db.query(
         'schedules',
         where: 'patientId = ?',
@@ -156,7 +126,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               children: [
-                // Card Profil Utama Pasien & Modul Grafik Kepatuhan
+                // Card Profil Utama Pasien
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -229,37 +199,6 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
                       const SizedBox(height: 24),
                       Container(height: 1, color: Colors.grey.shade100),
                       const SizedBox(height: 20),
-
-                      // Bagian Kepatuhan Terintegrasi dengan Line Chart asli bawaan file Anda
-                      const Text(
-                        'Tingkat Kepatuhan',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Persentase konsumsi obat teratur 30 hari terakhir.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF8A8A8A),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Pemasangan KepatuhanChart asli dengan menyuplai List<double> history
-                      SizedBox(
-                        width: double.infinity,
-                        height:
-                            140, // Memberikan ruang tinggi yang cukup untuk render grafik garis kustom
-                        child: KepatuhanChart(
-                          data: _kepatuhanDataHistory.isNotEmpty
-                              ? _kepatuhanDataHistory
-                              : null,
-                        ),
-                      ),
                     ],
                   ),
                 ),
